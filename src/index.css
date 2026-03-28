@@ -15,8 +15,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 30% 15%;
 
-    --primary: 220 40% 20%;
-    --primary-foreground: 40 33% 97%;
+    /* Brand: #0A84FF */
+    --primary: 211 100% 52%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 40 25% 90%;
     --secondary-foreground: 220 30% 15%;
@@ -24,29 +25,29 @@
     --muted: 40 15% 92%;
     --muted-foreground: 220 10% 50%;
 
-    --accent: 40 70% 50%;
-    --accent-foreground: 220 40% 12%;
+    --accent: 211 100% 95%;
+    --accent-foreground: 211 85% 28%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 40 15% 85%;
     --input: 40 15% 85%;
-    --ring: 220 40% 20%;
+    --ring: 211 100% 52%;
 
     --radius: 0.625rem;
 
     --sidebar-background: 220 40% 16%;
     --sidebar-foreground: 40 20% 85%;
-    --sidebar-primary: 40 70% 50%;
-    --sidebar-primary-foreground: 220 40% 12%;
+    --sidebar-primary: 211 100% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 35% 22%;
     --sidebar-accent-foreground: 40 20% 90%;
     --sidebar-border: 220 30% 22%;
-    --sidebar-ring: 40 70% 50%;
+    --sidebar-ring: 211 100% 52%;
 
-    --gold: 40 70% 50%;
-    --gold-light: 40 60% 70%;
+    --gold: 211 100% 52%;
+    --gold-light: 211 100% 68%;
     --navy: 220 40% 20%;
     --navy-deep: 220 45% 12%;
     --cream: 40 33% 97%;
@@ -74,14 +75,15 @@
 
 @layer utilities {
   .gradient-gold {
-    background: linear-gradient(135deg, hsl(40, 70%, 50%), hsl(40, 60%, 60%));
+    background: linear-gradient(135deg, #0a84ff, #5eb0ff);
   }
   .gradient-navy {
     background: linear-gradient(135deg, hsl(220, 40%, 20%), hsl(220, 45%, 12%));
   }
   .text-gradient-gold {
-    background: linear-gradient(135deg, hsl(40, 70%, 50%), hsl(35, 80%, 45%));
+    background: linear-gradient(135deg, #0a84ff, #0077ed);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
   }
 }

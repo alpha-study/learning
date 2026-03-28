@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Eye, Edit, Trash2 } from "lucide-react";
+import { UploadBookDrawer } from "@/components/UploadBookDrawer";
+import { Eye, Edit, Trash2, Upload } from "lucide-react";
 
 const books = [
   { id: 1, title: "The Art of Storytelling", author: "Jane Doe", genre: "Fiction", status: "Published", date: "2025-12-01" },
@@ -18,11 +20,25 @@ const statusColor: Record<string, string> = {
 };
 
 export default function UploadedBooks() {
+  const [uploadOpen, setUploadOpen] = useState(false);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <UploadBookDrawer open={uploadOpen} onOpenChange={setUploadOpen} />
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="font-heading text-2xl font-bold">Uploaded Books</h2>
-        <Badge variant="secondary" className="text-sm">{books.length} books</Badge>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            className="gradient-gold text-primary-foreground font-semibold"
+            onClick={() => setUploadOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Upload a book
+          </Button>
+          <Badge variant="secondary" className="text-sm">{books.length} books</Badge>
+        </div>
       </div>
 
       <Card className="bg-card overflow-hidden">

@@ -1,6 +1,6 @@
-import { LayoutDashboard, BookOpen, Upload, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, BookOpen, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -19,14 +19,12 @@ import { Button } from "@/components/ui/button";
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Uploaded Books", url: "/uploaded-books", icon: BookOpen },
-  { title: "Upload Books", url: "/upload-books", icon: Upload },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = async () => {

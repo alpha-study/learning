@@ -18,7 +18,7 @@ const genreData = [
   { name: "Biography", value: 20 },
 ];
 
-const COLORS = ["hsl(40,70%,50%)", "hsl(220,40%,20%)", "hsl(40,60%,70%)", "hsl(220,30%,40%)"];
+const COLORS = ["#0A84FF", "hsl(211,85%,42%)", "hsl(211,100%,68%)", "hsl(220,30%,40%)"];
 
 const stats = [
   { title: "Total Books", value: "142", icon: BookOpen, change: "+12 this month" },
@@ -44,7 +44,7 @@ export default function Dashboard() {
                   <p className="text-xs text-gold mt-1">{s.change}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg gradient-gold flex items-center justify-center">
-                  <s.icon className="w-5 h-5 text-accent-foreground" />
+                  <s.icon className="w-5 h-5 text-primary-foreground" />
                 </div>
               </div>
             </CardContent>
@@ -65,7 +65,7 @@ export default function Dashboard() {
                 <XAxis dataKey="month" stroke="hsl(220,10%,50%)" fontSize={12} />
                 <YAxis stroke="hsl(220,10%,50%)" fontSize={12} />
                 <Tooltip />
-                <Line type="monotone" dataKey="sales" stroke="hsl(40,70%,50%)" strokeWidth={2} dot={{ fill: "hsl(40,70%,50%)" }} />
+                <Line type="monotone" dataKey="sales" stroke="#0A84FF" strokeWidth={2} dot={{ fill: "#0A84FF" }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -82,7 +82,7 @@ export default function Dashboard() {
                 <XAxis dataKey="month" stroke="hsl(220,10%,50%)" fontSize={12} />
                 <YAxis stroke="hsl(220,10%,50%)" fontSize={12} />
                 <Tooltip />
-                <Bar dataKey="uploads" fill="hsl(220,40%,20%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="uploads" fill="#0A84FF" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

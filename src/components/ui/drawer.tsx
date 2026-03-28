@@ -22,25 +22,44 @@ const DrawerOverlay = React.forwardRef<
 ));
 DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
-const DrawerContent = React.forwardRef<
-  React.ElementRef<typeof DrawerPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <DrawerPortal>
-    <DrawerOverlay />
-    <DrawerPrimitive.Content
-      ref={ref}
-      className={cn(
-        "fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-[10px] border bg-background",
-        className,
-      )}
-      {...props}
-    >
-      <div className="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted" />
-      {children}
-    </DrawerPrimitive.Content>
-  </DrawerPortal>
-));
+type DrawerContentProps = React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> & {
+  /** Bottom sheet (default) or right-side panel. Use with `direction` on `Drawer` for right. */
+  side?: "bottom" | "right";
+};
+
+const DrawerContent = React.forwardRef<React.ElementRef<typeof DrawerPrimitive.Content>, DrawerContentProps>(
+  ({ className, children, side = "bottom", ...props }, ref) => (
+    <DrawerPortal>
+      <DrawerOverlay />
+      <DrawerPrimitive.Content
+        ref={ref}
+        className={cn(
+          "z-50 border bg-background",
+          side === "bottom" &&
+            "fixed inset-x-0 bottom-0 mt-24 flex h-auto max-h-[96vh] flex-col rounded-t-[10px]",
+          side === "right" &&
+            "fixed bottom-0 right-0 top-0 flex h-full max-h-none w-full max-w-lg flex-row rounded-none rounded-l-xl border-border shadow-xl sm:max-w-xl",
+          className,
+        )}
+        {...props}
+      >
+        {side === "bottom" ? (
+          <div className="mx-auto mt-4 h-2 w-[100px] shrink-0 rounded-full bg-muted" aria-hidden />
+        ) : (
+          <div
+            className="flex w-5 shrink-0 flex-col items-center border-r border-border bg-muted/30 py-12"
+            aria-hidden
+          >
+            <div className="h-12 w-1 rounded-full bg-muted" />
+          </div>
+        )}
+        <div className={cn("flex min-h-0 flex-1 flex-col", side === "right" && "min-w-0 overflow-hidden")}>
+          {children}
+        </div>
+      </DrawerPrimitive.Content>
+    </DrawerPortal>
+  ),
+);
 DrawerContent.displayName = "DrawerContent";
 
 const DrawerHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

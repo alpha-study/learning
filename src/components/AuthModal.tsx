@@ -83,7 +83,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
-            <Button type="submit" className="w-full gradient-gold text-accent-foreground font-semibold" disabled={loading}>
+            <Button type="submit" className="w-full gradient-gold text-primary-foreground font-semibold" disabled={loading}>
               {loading ? "Signing in…" : "Sign In"}
             </Button>
             <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleSignUp} disabled={loading}>
@@ -100,7 +100,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               <Label htmlFor="reset-email">Email</Label>
               <Input id="reset-email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-            <Button type="submit" className="w-full gradient-gold text-accent-foreground font-semibold" disabled={loading}>
+            <Button type="submit" className="w-full gradient-gold text-primary-foreground font-semibold" disabled={loading}>
               {loading ? "Sending…" : "Send Reset Link"}
             </Button>
             <button type="button" className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors" onClick={() => setView("login")}>

@@ -7,7 +7,6 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
 import UploadedBooks from "./pages/UploadedBooks";
-import UploadBooks from "./pages/UploadBooks";
 import SettingsPage from "./pages/Settings";
 import ResetPassword from "./pages/ResetPassword";
 import { DashboardLayout } from "./components/DashboardLayout";
@@ -26,7 +25,6 @@ const App = () => (
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/uploaded-books" element={<UploadedBooks />} />
-            <Route path="/upload-books" element={<UploadBooks />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />

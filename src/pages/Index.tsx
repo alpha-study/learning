@@ -32,7 +32,7 @@ export default function Index() {
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 md:px-12 py-4 border-b border-border/50">
         <h1 className="font-heading text-2xl font-bold text-foreground">BookVault</h1>
-        <Button className="gradient-gold text-accent-foreground font-semibold px-6" onClick={() => setAuthOpen(true)}>
+        <Button className="gradient-gold text-primary-foreground font-semibold px-6" onClick={() => setAuthOpen(true)}>
           Sign In
         </Button>
       </nav>
@@ -49,7 +49,7 @@ export default function Index() {
               The modern publishing platform for authors and publishers. Manage, track, and grow your book catalog with powerful tools and elegant analytics.
             </p>
             <div className="flex gap-4 pt-2">
-              <Button size="lg" className="gradient-gold text-accent-foreground font-semibold px-8" onClick={() => setAuthOpen(true)}>
+              <Button size="lg" className="gradient-gold text-primary-foreground font-semibold px-8" onClick={() => setAuthOpen(true)}>
                 Get Started
               </Button>
               <Button size="lg" variant="outline" className="border-border text-foreground">
@@ -71,7 +71,7 @@ export default function Index() {
             {features.map((f) => (
               <div key={f.title} className="bg-background rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-12 h-12 rounded-lg gradient-gold flex items-center justify-center mb-4">
-                  <f.icon className="w-6 h-6 text-accent-foreground" />
+                  <f.icon className="w-6 h-6 text-primary-foreground" />
                 </div>
                 <h4 className="font-heading text-lg font-semibold mb-2">{f.title}</h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
