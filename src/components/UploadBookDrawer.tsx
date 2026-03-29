@@ -16,18 +16,50 @@ import { FileText, ImageIcon, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
+export type BookDetails = {
+  id: number;
+  title: string;
+  author: string;
+  genre: string;
+  status: string;
+  date: string;
+  coverUrl?: string;
+};
+
 type UploadBookDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  bookToEdit?: BookDetails | null;
+  onSave?: (book: BookDetails) => void;
 };
 
 type CategoryId = "acadamy" | "story";
 type OfferingType = "free" | "paid";
 
+const ACADEMIC_DATA: Record<string, Record<string, string[]>> = {
+  Engineering: {
+    "Computer Science": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+    "Mechanical": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+    "Electrical": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+  },
+  Medical: {
+    "MBBS": ["Phase 1", "Phase 2", "Phase 3"],
+    "BDS": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+  },
+  Commerce: {
+    "B.Com": ["FY", "SY", "TY"],
+    "BBA": ["FY", "SY", "TY"],
+  },
+  Science: {
+    "B.Sc Physics": ["1st Year", "2nd Year", "3rd Year"],
+    "B.Sc Mathematics": ["1st Year", "2nd Year", "3rd Year"],
+  }
+};
+
 const THUMB_MAX_MB = 5;
 const BOOK_MAX_MB = 50;
 
-export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) {
+export function UploadBookDrawer({ open, onOpenChange, bookToEdit, onSave }: UploadBookDrawerProps) {
   const [category, setCategory] = useState<CategoryId | "">("");
   const [department, setDepartment] = useState("");
   const [branch, setBranch] = useState("");
@@ -54,7 +86,14 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
   };
 
   useEffect(() => {
-    if (!open) {
+    if (open && bookToEdit) {
+      setBookName(bookToEdit.title || "");
+      setCategory("story"); // Mock value since we don't have category in BookDetails
+      setOfferingType("free");
+      if (bookToEdit.coverUrl) {
+        setThumbnailPreview(bookToEdit.coverUrl);
+      }
+    } else if (!open) {
       setCategory("");
       setDepartment("");
       setBranch("");
@@ -64,7 +103,7 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
       setOfferingType("free");
       setBookPrice("");
       setThumbnailPreview((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
+        if (prev && !prev.startsWith("http")) URL.revokeObjectURL(prev); // don't revoke external URLs
         return null;
       });
       setBookFileName(null);
@@ -72,7 +111,7 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
       if (thumbInputRef.current) thumbInputRef.current.value = "";
       if (bookInputRef.current) bookInputRef.current.value = "";
     }
-  }, [open]);
+  }, [open, bookToEdit]);
 
   const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -156,7 +195,12 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
       }
     }
 
-    toast({ title: "Book uploaded!", description: "Your book has been submitted for review." });
+    if (bookToEdit) {
+      toast({ title: "Book Updated", description: "The book details have been saved." });
+      if (onSave) onSave({ ...bookToEdit, title: bookName });
+    } else {
+      toast({ title: "Book uploaded!", description: "Your book has been submitted for review." });
+    }
     onOpenChange(false);
   };
 
@@ -164,7 +208,7 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
     <Drawer open={open} onOpenChange={onOpenChange} shouldScaleBackground={false} direction="right">
       <DrawerContent side="right" className="gap-0 p-0">
         <DrawerHeader className="shrink-0 border-b border-border px-4 pb-4 pt-2 text-left">
-          <DrawerTitle className="font-heading text-xl">Upload a book</DrawerTitle>
+          <DrawerTitle className="font-heading text-xl">{bookToEdit ? "Edit Book" : "Upload a book"}</DrawerTitle>
           <DrawerDescription>
             Choose a category, add details, and upload your thumbnail and manuscript.
           </DrawerDescription>
@@ -189,27 +233,59 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
               <div className="space-y-4 rounded-md border border-border bg-muted/20 p-4">
                 <p className="text-sm font-medium text-foreground">Acadamy details</p>
                 <div className="space-y-2">
-                  <Label htmlFor="upload-department">Department</Label>
-                  <Input
-                    id="upload-department"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    placeholder="Department"
-                  />
+                  <Label>Department</Label>
+                  <Select 
+                    value={department} 
+                    onValueChange={(val) => { setDepartment(val); setBranch(""); setAcademyClass(""); }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(ACADEMIC_DATA).map(dep => (
+                        <SelectItem key={dep} value={dep}>{dep}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="upload-branch">Branch</Label>
-                  <Input id="upload-branch" value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="Branch" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="upload-class">Class</Label>
-                  <Input
-                    id="upload-class"
-                    value={academyClass}
-                    onChange={(e) => setAcademyClass(e.target.value)}
-                    placeholder="Class"
-                  />
-                </div>
+                
+                {department && ACADEMIC_DATA[department] && (
+                  <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                    <Label>Branch</Label>
+                    <Select 
+                      value={branch} 
+                      onValueChange={(val) => { setBranch(val); setAcademyClass(""); }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Branch" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(ACADEMIC_DATA[department]).map(br => (
+                          <SelectItem key={br} value={br}>{br}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                {department && branch && ACADEMIC_DATA[department]?.[branch] && (
+                  <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                    <Label>Class</Label>
+                    <Select 
+                      value={academyClass} 
+                      onValueChange={setAcademyClass}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACADEMIC_DATA[department][branch].map(cls => (
+                          <SelectItem key={cls} value={cls}>{cls}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             ) : null}
 
@@ -348,8 +424,8 @@ export function UploadBookDrawer({ open, onOpenChange }: UploadBookDrawerProps) 
             </Button>
           </DrawerClose>
           <Button type="submit" form="upload-book-form" className="gradient-gold text-primary-foreground font-semibold">
-            <FileText className="mr-2 h-4 w-4" />
-            Upload book
+            {bookToEdit ? <FileText className="mr-2 h-4 w-4" /> : <Upload className="mr-2 h-4 w-4" />}
+            {bookToEdit ? "Save Changes" : "Upload book"}
           </Button>
         </DrawerFooter>
       </DrawerContent>

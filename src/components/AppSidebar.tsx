@@ -1,6 +1,7 @@
 import { LayoutDashboard, BookOpen, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
+import logoImage from "@/assets/logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Sidebar,
@@ -36,9 +37,9 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/60">
+          <SidebarGroupLabel className="flex h-14 items-center">
             {!collapsed && (
-              <span className="font-heading text-lg font-bold text-sidebar-primary">BookVault</span>
+              <img src={logoImage} alt="alpha logo" className="h-8 w-auto object-contain" />
             )}
           </SidebarGroupLabel>
           <SidebarGroupContent className="mt-4">

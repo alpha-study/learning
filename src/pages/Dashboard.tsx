@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from "recharts";
 import { BookOpen, TrendingUp, DollarSign, Users } from "lucide-react";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const monthlyData = [
   { month: "Jan", uploads: 12, sales: 45 },
@@ -30,7 +31,10 @@ const stats = [
 export default function Dashboard() {
   return (
     <div className="space-y-6">
-      <h2 className="font-heading text-2xl font-bold">Dashboard</h2>
+      <div className="flex items-center gap-2">
+        <SidebarTrigger className="-ml-2" />
+        <h2 className="font-heading text-2xl font-bold">Dashboard</h2>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

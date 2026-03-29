@@ -6,52 +6,52 @@
 
 @layer base {
   :root {
-    --background: 40 33% 97%;
-    --foreground: 220 30% 15%;
+    --background: 200 25% 98%;
+    --foreground: 200 40% 12%;
 
-    --card: 40 25% 95%;
-    --card-foreground: 220 30% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 40% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 30% 15%;
+    --popover-foreground: 200 40% 12%;
 
-    /* Brand: #0A84FF */
-    --primary: 211 100% 52%;
+    /* Brand: #24AAE2 */
+    --primary: 198 76.6% 51.4%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 25% 90%;
-    --secondary-foreground: 220 30% 15%;
+    --secondary: 200 25% 92%;
+    --secondary-foreground: 200 40% 20%;
 
-    --muted: 40 15% 92%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 200 20% 93%;
+    --muted-foreground: 200 15% 45%;
 
-    --accent: 211 100% 95%;
-    --accent-foreground: 211 85% 28%;
+    --accent: 198 70% 92%;
+    --accent-foreground: 198 76.6% 30%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 15% 85%;
-    --input: 40 15% 85%;
-    --ring: 211 100% 52%;
+    --border: 200 20% 88%;
+    --input: 200 20% 88%;
+    --ring: 198 76.6% 51.4%;
 
     --radius: 0.625rem;
 
-    --sidebar-background: 220 40% 16%;
-    --sidebar-foreground: 40 20% 85%;
-    --sidebar-primary: 211 100% 52%;
+    --sidebar-background: 200 60% 12%;
+    --sidebar-foreground: 200 20% 88%;
+    --sidebar-primary: 198 76.6% 51.4%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 35% 22%;
-    --sidebar-accent-foreground: 40 20% 90%;
-    --sidebar-border: 220 30% 22%;
-    --sidebar-ring: 211 100% 52%;
+    --sidebar-accent: 200 50% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 200 40% 16%;
+    --sidebar-ring: 198 76.6% 51.4%;
 
-    --gold: 211 100% 52%;
-    --gold-light: 211 100% 68%;
-    --navy: 220 40% 20%;
-    --navy-deep: 220 45% 12%;
-    --cream: 40 33% 97%;
-    --cream-dark: 40 25% 90%;
+    --gold: 198 76.6% 51.4%;
+    --gold-light: 198 76.6% 70%;
+    --navy: 200 60% 18%;
+    --navy-deep: 200 60% 12%;
+    --cream: 200 25% 98%;
+    --cream-dark: 200 25% 92%;
 
     --font-heading: 'Playfair Display', Georgia, serif;
     --font-body: 'Source Sans 3', system-ui, sans-serif;
@@ -68,20 +68,27 @@
     font-family: var(--font-body);
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-heading);
   }
 }
 
 @layer utilities {
   .gradient-gold {
-    background: linear-gradient(135deg, #0a84ff, #5eb0ff);
+    background: linear-gradient(135deg, #24AAE2, #68cbf6);
   }
+
   .gradient-navy {
-    background: linear-gradient(135deg, hsl(220, 40%, 20%), hsl(220, 45%, 12%));
+    background: linear-gradient(135deg, hsl(200, 60%, 18%), hsl(200, 60%, 12%));
   }
+
   .text-gradient-gold {
-    background: linear-gradient(135deg, #0a84ff, #0077ed);
+    background: linear-gradient(135deg, #24AAE2, #1d88b5);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;

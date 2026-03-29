@@ -6,12 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Camera,
   Clock,
   Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   Gift,
   Headphones,
   HelpCircle,
@@ -22,8 +26,8 @@ import {
   X,
 } from "lucide-react";
 
-const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL ?? "support@bookbinder.com";
-const SUPPORT_PHONE = import.meta.env.VITE_SUPPORT_PHONE ?? "+91 1800-123-4567";
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL ?? "support@alpha.study";
+const SUPPORT_PHONE = import.meta.env.VITE_SUPPORT_PHONE ?? "+91 9975640109";
 const SUPPORT_HOURS = import.meta.env.VITE_SUPPORT_HOURS ?? "Monday – Saturday, 10:00 AM – 6:00 PM IST";
 
 function randomReferralSegment(): string {
@@ -65,6 +69,18 @@ export default function SettingsPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("Alpha Administrator");
+  const [profileEmail, setProfileEmail] = useState("admin@alpha.study");
+  
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   useEffect(() => {
     return () => {
       if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -99,11 +115,10 @@ export default function SettingsPage() {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsEditingProfile(false);
     toast({
-      title: "Settings saved",
-      description: photoPreview
-        ? "Your profile and photo will sync once your API is connected."
-        : "Your changes have been saved.",
+      title: "Profile updated",
+      description: "Your changes have been saved successfully.",
     });
   };
 
@@ -146,8 +161,63 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl pb-16">
+      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Change Password</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2 relative">
+              <Label>Current password</Label>
+              <div className="relative">
+                <Input type={showCurrentPassword ? "text" : "password"} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 relative">
+              <Label>New password</Label>
+              <div className="relative">
+                <Input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)}>
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 relative">
+              <Label>Confirm password</Label>
+              <div className="relative">
+                <Input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordOpen(false)}>Cancel</Button>
+            <Button onClick={() => {
+              if (!currentPassword || !newPassword || !confirmPassword) {
+                toast({ title: "Validation error", description: "Please fill all fields.", variant: "destructive" });
+                return;
+              }
+              if (newPassword !== confirmPassword) {
+                toast({ title: "Error", description: "Passwords do not match", variant: "destructive" });
+                return;
+              }
+              toast({ title: "Success", description: "Password changed successfully." });
+              setPasswordOpen(false);
+              setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+            }} className="gradient-gold text-primary-foreground font-semibold">Change Password</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="mb-8">
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Settings</h1>
+        <div className="flex items-center gap-2">
+          <SidebarTrigger className="-ml-2" />
+          <h1 className="font-heading text-3xl font-bold tracking-tight">Settings</h1>
+        </div>
         <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
           Manage your profile, verification, referrals, and how to reach support.
         </p>
@@ -225,20 +295,48 @@ export default function SettingsPage() {
 
                   <Separator />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Display name</Label>
-                    <Input id="name" name="name" placeholder="Your name" autoComplete="name" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" name="email" type="email" placeholder="you@example.com" autoComplete="email" />
-                  </div>
-
-                  <div className="flex flex-wrap gap-3 border-t border-border pt-6">
-                    <Button type="submit" className="gradient-gold text-primary-foreground font-semibold">
-                      Save changes
-                    </Button>
-                  </div>
+                  {isEditingProfile ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Display name</Label>
+                        <Input id="name" name="name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Your name" autoComplete="name" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input id="email" name="email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
+                      </div>
+                      <div className="flex flex-wrap gap-3 pt-2">
+                        <Button type="submit" className="gradient-gold text-primary-foreground font-semibold">
+                          Save changes
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => setIsEditingProfile(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-2">
+                        <div className="space-y-1">
+                          <Label className="text-muted-foreground">Display name</Label>
+                          <p className="font-medium text-foreground">{profileName || "Not set"}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-muted-foreground">Email</Label>
+                          <p className="font-medium text-foreground">{profileEmail}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-3 border-t border-border pt-6 items-center">
+                        <Button type="button" onClick={() => setIsEditingProfile(true)} className="gradient-gold text-primary-foreground font-semibold">
+                          Edit Profile
+                        </Button>
+                        <Button type="button" variant="outline" onClick={() => setPasswordOpen(true)}>
+                          Change Password
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </form>
               </SettingsPanel>
             </TabsContent>
