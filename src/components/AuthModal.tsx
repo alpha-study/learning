@@ -48,19 +48,18 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
     }
   };
 
-  const handleSignUp = async () => {
-    if (!email.trim() || !password.trim()) return;
-    setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password: password.trim(),
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setLoading(false);
-    if (error) {
-      toast({ title: "Sign up failed", description: error.message, variant: "destructive" });
+  const handleSignUpRedirect = () => {
+    onOpenChange(false);
+    // Use window.location.href or scroll if on the same page
+    if (window.location.pathname === "/") {
+      const contactSection = document.getElementById('contact');
+      if (contactSection) {
+        contactSection.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.location.hash = 'contact';
+      }
     } else {
-      toast({ title: "Account created", description: "Check your email to verify your account." });
+      window.location.href = "/#contact";
     }
   };
 
@@ -86,7 +85,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
             <Button type="submit" className="w-full gradient-gold text-primary-foreground font-semibold" disabled={loading}>
               {loading ? "Signing in…" : "Sign In"}
             </Button>
-            <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleSignUp} disabled={loading}>
+            <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={handleSignUpRedirect} disabled={loading}>
               Don't have an account? Sign Up
             </Button>
             <button type="button" className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors" onClick={() => setView("forgot")}>

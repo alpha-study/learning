@@ -1,4 +1,4 @@
-import { LayoutDashboard, BookOpen, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, GraduationCap, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import logoImage from "@/assets/logo.png";
@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Uploaded Books", url: "/uploaded-books", icon: BookOpen },
+  { title: "My Courses", url: "/my-courses", icon: GraduationCap },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
@@ -37,9 +37,13 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="flex h-14 items-center">
-            {!collapsed && (
-              <img src={logoImage} alt="alpha logo" className="h-8 w-auto object-contain" />
+          <SidebarGroupLabel className="flex h-14 items-center justify-center px-0">
+            {collapsed ? (
+              <img src={logoImage} alt="alpha logo" className="h-8 w-auto object-contain dark:brightness-0 dark:invert transition-all mx-auto" />
+            ) : (
+              <div className="flex justify-center w-full">
+                <img src={logoImage} alt="alpha logo" className="h-8 w-auto object-contain dark:brightness-0 dark:invert transition-all" />
+              </div>
             )}
           </SidebarGroupLabel>
           <SidebarGroupContent className="mt-4">

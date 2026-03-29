@@ -213,14 +213,8 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="mb-8">
-        <div className="flex items-center gap-2">
-          <SidebarTrigger className="-ml-2" />
-          <h1 className="font-heading text-3xl font-bold tracking-tight">Settings</h1>
-        </div>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-base">
-          Manage your profile, verification, referrals, and how to reach support.
-        </p>
+      <div className="mb-8 pl-1">
+        <h1 className="font-heading text-3xl font-bold tracking-tight">Settings</h1>
       </div>
 
       <Tabs defaultValue="profile" className="w-full">

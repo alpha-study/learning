@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,8 +6,8 @@
 
 @layer base {
   :root {
-    --background: 200 25% 98%;
-    --foreground: 200 40% 12%;
+    --background: 220 33% 98%;
+    --foreground: 220 40% 10%;
 
     --card: 0 0% 100%;
     --card-foreground: 200 40% 12%;
@@ -15,46 +15,85 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 40% 12%;
 
-    /* Brand: #24AAE2 */
-    --primary: 198 76.6% 51.4%;
-    --primary-foreground: 0 0% 100%;
+    /* Unified Brand: Vibrant Blue */
+    --primary: 210 100% 50%;
+    --primary-foreground: 210 100% 98%;
 
-    --secondary: 200 25% 92%;
-    --secondary-foreground: 200 40% 20%;
+    --secondary: 220 20% 96%;
+    --secondary-foreground: 220 40% 15%;
 
-    --muted: 200 20% 93%;
-    --muted-foreground: 200 15% 45%;
+    --muted: 220 15% 94%;
+    --muted-foreground: 220 10% 45%;
 
-    --accent: 198 70% 92%;
-    --accent-foreground: 198 76.6% 30%;
+    --accent: 210 100% 96%;
+    --accent-foreground: 210 100% 30%;
 
     --destructive: 0 70% 50%;
     --destructive-foreground: 0 0% 100%;
 
     --border: 200 20% 88%;
     --input: 200 20% 88%;
-    --ring: 198 76.6% 51.4%;
+    --ring: 210 100% 50%;
 
     --radius: 0.625rem;
 
-    --sidebar-background: 200 60% 12%;
-    --sidebar-foreground: 200 20% 88%;
-    --sidebar-primary: 198 76.6% 51.4%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 200 50% 20%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 200 40% 16%;
-    --sidebar-ring: 198 76.6% 51.4%;
+    --sidebar-background: 220 33% 98%;
+    --sidebar-foreground: 220 40% 15%;
+    --sidebar-primary: 210 100% 50%;
+    --sidebar-primary-foreground: 210 100% 98%;
+    --sidebar-accent: 210 100% 96%;
+    --sidebar-accent-foreground: 210 100% 30%;
+    --sidebar-border: 220 20% 92%;
+    --sidebar-ring: 210 100% 50%;
 
-    --gold: 198 76.6% 51.4%;
-    --gold-light: 198 76.6% 70%;
+    --gold: 210 100% 50%;
+    --gold-light: 210 100% 70%;
     --navy: 200 60% 18%;
     --navy-deep: 200 60% 12%;
     --cream: 200 25% 98%;
     --cream-dark: 200 25% 92%;
 
-    --font-heading: 'Playfair Display', Georgia, serif;
-    --font-body: 'Source Sans 3', system-ui, sans-serif;
+    --font-heading: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .dark {
+    --background: 222 47% 4%;
+    --foreground: 213 31% 91%;
+ 
+    --card: 222 47% 4%;
+    --card-foreground: 213 31% 91%;
+ 
+    --popover: 222 47% 4%;
+    --popover-foreground: 213 31% 91%;
+ 
+    --primary: 210 100% 50%; /* Vibrant Blue for Dark Mode */
+    --primary-foreground: 210 100% 98%;
+ 
+    --secondary: 222 47% 12%;
+    --secondary-foreground: 210 100% 98%;
+ 
+    --muted: 222 47% 12%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 210 100% 12%;
+    --accent-foreground: 210 100% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 100% 98%;
+ 
+    --border: 222 47% 12%;
+    --input: 222 47% 12%;
+    --ring: 210 100% 50%;
+
+    --sidebar-background: 222 47% 4%;
+    --sidebar-foreground: 213 31% 91%;
+    --sidebar-primary: 210 100% 50%;
+    --sidebar-primary-foreground: 210 100% 98%;
+    --sidebar-accent: 210 100% 12%;
+    --sidebar-accent-foreground: 210 100% 98%;
+    --sidebar-border: 222 47% 12%;
+    --sidebar-ring: 210 100% 50%;
   }
 }
 
@@ -64,8 +103,10 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary-foreground;
     font-family: var(--font-body);
+    font-feature-settings: "cv02", "cv05", "cv08", "cv09", "cv10", "cv11", "ss01", "ss02", "ss03";
+    text-rendering: optimizeLegibility;
   }
 
   h1,
@@ -75,12 +116,14 @@
   h5,
   h6 {
     font-family: var(--font-heading);
+    text-wrap: balance;
+    letter-spacing: -0.025em;
   }
 }
 
 @layer utilities {
   .gradient-gold {
-    background: linear-gradient(135deg, #24AAE2, #68cbf6);
+    background: linear-gradient(135deg, hsl(210, 100% , 50%), hsl(220, 100%, 70%));
   }
 
   .gradient-navy {
@@ -88,7 +131,7 @@
   }
 
   .text-gradient-gold {
-    background: linear-gradient(135deg, #24AAE2, #1d88b5);
+    background: linear-gradient(135deg, hsl(210, 100%, 50%), hsl(230, 100%, 60%));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
