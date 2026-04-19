@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { isMockAuthenticated, MOCK_AUTH_EVENT } from "@/lib/mock-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,13 +40,15 @@ export default function Index() {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) navigate("/dashboard");
-    });
+    const goDashboardIfMock = () => {
+      if (isMockAuthenticated()) navigate("/dashboard");
+    };
+    goDashboardIfMock();
+    window.addEventListener(MOCK_AUTH_EVENT, goDashboardIfMock);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      subscription.unsubscribe();
+      window.removeEventListener(MOCK_AUTH_EVENT, goDashboardIfMock);
     };
   }, [navigate]);
 

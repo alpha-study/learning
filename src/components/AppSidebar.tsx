@@ -2,7 +2,7 @@ import { LayoutDashboard, GraduationCap, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import logoImage from "@/assets/logo.png";
-import { supabase } from "@/integrations/supabase/client";
+import { setMockAuthenticated } from "@/lib/mock-auth";
 import {
   Sidebar,
   SidebarContent,
@@ -28,8 +28,8 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    setMockAuthenticated(false);
     navigate("/");
   };
 

@@ -2,22 +2,25 @@ import { useEffect, useState } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { supabase } from "@/integrations/supabase/client";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { isMockAuthenticated, MOCK_AUTH_EVENT } from "@/lib/mock-auth";
 
 export function DashboardLayout() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) navigate("/");
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate("/");
-      else setReady(true);
-    });
-    return () => subscription.unsubscribe();
+    const check = () => {
+      if (isMockAuthenticated()) {
+        setReady(true);
+      } else {
+        setReady(false);
+        navigate("/");
+      }
+    };
+    check();
+    window.addEventListener(MOCK_AUTH_EVENT, check);
+    return () => window.removeEventListener(MOCK_AUTH_EVENT, check);
   }, [navigate]);
 
   if (!ready) return null;
