@@ -5,8 +5,12 @@
       "destination": "https://dev.alpha.study/vendor/:path*"
     },
     {
-      "source": "/assets/:path*",
-      "destination": "https://dev.alpha.study/assets/:path*"
+      "source": "/assets/courses/:path*",
+      "destination": "https://dev.alpha.study/assets/courses/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

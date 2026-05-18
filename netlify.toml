@@ -9,8 +9,8 @@
   force = true
 
 [[redirects]]
-  from = "/assets/*"
-  to = "https://dev.alpha.study/assets/:splat"
+  from = "/assets/courses/*"
+  to = "https://dev.alpha.study/assets/courses/:splat"
   status = 200
   force = true
 
