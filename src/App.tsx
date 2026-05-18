@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
@@ -18,27 +18,30 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const router = createBrowserRouter([
+  { path: "/", element: <Index /> },
+  { path: "/reset-password", element: <ResetPassword /> },
+  {
+    element: <DashboardLayout />,
+    children: [
+      { path: "/dashboard", element: <Dashboard /> },
+      { path: "/my-courses", element: <MyCourses /> },
+      { path: "/settings", element: <SettingsPage /> },
+    ],
+  },
+  { path: "/my-courses/upload", element: <CourseUpload /> },
+  { path: "/my-courses/view/:id", element: <CourseDetails /> },
+  { path: "/add-exam", element: <AddExam /> },
+  { path: "*", element: <NotFound /> },
+]);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="light" storageKey="learning-ui-theme">
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route element={<DashboardLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/my-courses" element={<MyCourses />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
-            <Route path="/my-courses/upload" element={<CourseUpload />} />
-            <Route path="/my-courses/view/:id" element={<CourseDetails />} />
-            <Route path="/add-exam" element={<AddExam />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <RouterProvider router={router} />
       </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>

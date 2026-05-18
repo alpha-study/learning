@@ -10,6 +10,21 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    /** Avoid browser CORS during local dev: browser calls same-origin `/vendor-api`, Vite forwards to the vendor API. */
+    proxy: {
+      "/vendor-api": {
+        target: "https://dev.alpha.study",
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p) => p.replace(/^\/vendor-api/, "/vendor"),
+      },
+      /** Course videos/thumbnails (`courses/...` → `/assets/courses/...` on the API host). */
+      "/assets": {
+        target: "https://dev.alpha.study",
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
   plugins: [react()].filter(Boolean),
   resolve: {

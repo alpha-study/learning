@@ -1,14 +1,47 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { BankDetailsSection } from "@/components/settings/BankDetailsSection";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/hooks/use-toast";
+import type { AccountMeResponse, UpdateProfilePayload } from "@/lib/api/account";
+import {
+  extractAvtarUrlFromResponse,
+  fetchAccountMe,
+  formatInstructorFullName,
+  changePassword,
+  getAccountMeErrorMessage,
+  mergeProfilePictureUploadIntoAccountMeCache,
+  mergeSavedProfileIntoAccountMeCache,
+  parseAccountMePayload,
+  updateProfile,
+  updateProfilePicture,
+} from "@/lib/api/account";
+import { useVendorAvatarDisplayUrl } from "@/hooks/use-vendor-avatar-display-url";
+import { getVendorAuthToken } from "@/lib/mock-auth";
+import {
+  INVALID_EMAIL_MESSAGE,
+  isValidEmailFormat,
+} from "@/lib/api/auth";
+import { compressProfileImageIfNeeded } from "@/lib/compress-profile-image";
+import { cn } from "@/lib/utils";
 import {
   Camera,
   Clock,
@@ -19,9 +52,13 @@ import {
   Gift,
   Headphones,
   HelpCircle,
+  Image as ImageIcon,
   Mail,
+  Monitor,
+  Moon,
   Phone,
   ShieldCheck,
+  Sun,
   UserRound,
   X,
 } from "lucide-react";
@@ -40,7 +77,27 @@ function randomReferralSegment(): string {
 }
 
 const PHOTO_MAX_MB = 5;
+/** Target cap for compression output (slightly under hard limit for safety). */
+const PHOTO_MAX_BYTES = Math.floor(PHOTO_MAX_MB * 1024 * 1024 * 0.97);
 const PHOTO_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
+
+function profileInitials(displayName: string, email: string): string {
+  const n = displayName.trim();
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (
+        parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)
+      ).toUpperCase();
+    }
+    return n.slice(0, 2).toUpperCase();
+  }
+  const e = email.trim();
+  if (e.includes("@")) {
+    return e.slice(0, 2).toUpperCase();
+  }
+  return "?";
+}
 
 /** Outer shell for each settings tab — common in dashboard settings UIs */
 function SettingsPanel({
@@ -63,16 +120,118 @@ function SettingsPanel({
   );
 }
 
+type UiTheme = "dark" | "light" | "system";
+
+function ProfileAppearanceSection() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <div className="mt-6 border-t border-border pt-6">
+      <h4 className="mb-1 text-sm font-semibold tracking-tight text-foreground">
+        Appearance
+      </h4>
+      <p className="mb-4 text-xs text-muted-foreground">
+        Theme applies on this device only and is remembered in your browser.
+      </p>
+      <RadioGroup
+        value={theme}
+        onValueChange={(v) => setTheme(v as UiTheme)}
+        className="grid gap-2 sm:grid-cols-3"
+      >
+        <label
+          htmlFor="profile-theme-light"
+          className={cn(
+            "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors",
+            theme === "light"
+              ? "border-primary bg-primary/[0.06] shadow-sm"
+              : "border-border bg-card hover:bg-muted/40"
+          )}
+        >
+          <RadioGroupItem value="light" id="profile-theme-light" />
+          <Sun className="h-4 w-4 shrink-0 text-foreground opacity-80" aria-hidden />
+          <span className="text-sm font-medium leading-none">Light</span>
+        </label>
+        <label
+          htmlFor="profile-theme-dark"
+          className={cn(
+            "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors",
+            theme === "dark"
+              ? "border-primary bg-primary/[0.06] shadow-sm"
+              : "border-border bg-card hover:bg-muted/40"
+          )}
+        >
+          <RadioGroupItem value="dark" id="profile-theme-dark" />
+          <Moon className="h-4 w-4 shrink-0 text-foreground opacity-80" aria-hidden />
+          <span className="text-sm font-medium leading-none">Dark</span>
+        </label>
+        <label
+          htmlFor="profile-theme-system"
+          className={cn(
+            "flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors sm:col-span-1",
+            theme === "system"
+              ? "border-primary bg-primary/[0.06] shadow-sm"
+              : "border-border bg-card hover:bg-muted/40"
+          )}
+        >
+          <RadioGroupItem value="system" id="profile-theme-system" />
+          <Monitor className="h-4 w-4 shrink-0 text-foreground opacity-80" aria-hidden />
+          <span className="text-sm font-medium leading-none">System</span>
+        </label>
+      </RadioGroup>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const pendingPhotoFileRef = useRef<File | null>(null);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileName, setProfileName] = useState("Alpha Administrator");
-  const [profileEmail, setProfileEmail] = useState("admin@alpha.study");
-  
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [saveProfileLoading, setSaveProfileLoading] = useState(false);
+  /** Ensures avatar path is known immediately after save (GET /me can lag behind or omit path one tick). */
+  const [persistedAvatarPath, setPersistedAvatarPath] = useState<string | null>(
+    null
+  );
+  const [isPhotoProcessing, setIsPhotoProcessing] = useState(false);
+  const [verificationPane, setVerificationPane] = useState<"kyc" | "bank">("kyc");
+
+  const {
+    data: meData,
+    isPending: profileLoading,
+    isError: profileError,
+    error: profileQueryError,
+    refetch: refetchProfile,
+  } = useQuery({
+    queryKey: ["vendor", "account", "me"],
+    queryFn: fetchAccountMe,
+    staleTime: 60_000,
+  });
+
+  const profile = useMemo(
+    () => (meData ? parseAccountMePayload(meData) : null),
+    [meData]
+  );
+
+  const effectiveAvatarStoredPath =
+    profile?.avatarUrl?.trim() || persistedAvatarPath || undefined;
+
+  const avatarDisplaySrc = useVendorAvatarDisplayUrl(
+    photoPreview,
+    effectiveAvatarStoredPath
+  );
+
+  const profilePhotoPreviewSrc = photoPreview ?? avatarDisplaySrc;
+  const canPreviewProfilePhoto = Boolean(profilePhotoPreviewSrc);
+
+  const [profilePhotoPreviewOpen, setProfilePhotoPreviewOpen] = useState(false);
+
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -80,6 +239,7 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSubmitLoading, setPasswordSubmitLoading] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -87,7 +247,14 @@ export default function SettingsPage() {
     };
   }, [photoPreview]);
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const p = profile?.avatarUrl?.trim();
+    if (persistedAvatarPath && p && p === persistedAvatarPath) {
+      setPersistedAvatarPath(null);
+    }
+  }, [profile?.avatarUrl, persistedAvatarPath]);
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -95,31 +262,146 @@ export default function SettingsPage() {
       toast({ title: "Invalid file", description: "Please choose a JPG, PNG, WebP, or GIF image.", variant: "destructive" });
       return;
     }
-    if (file.size > PHOTO_MAX_MB * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: `Images must be ${PHOTO_MAX_MB}MB or smaller.`,
-        variant: "destructive",
-      });
-      return;
+    setIsPhotoProcessing(true);
+    try {
+      let toUse = file;
+      if (file.size > PHOTO_MAX_BYTES) {
+        try {
+          toUse = await compressProfileImageIfNeeded(file, PHOTO_MAX_BYTES);
+        } catch (compressErr) {
+          toast({
+            title: "Could not optimize image",
+            description:
+              compressErr instanceof Error
+                ? compressErr.message
+                : "Try a smaller image or a different format.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      const hardCap = PHOTO_MAX_MB * 1024 * 1024;
+      if (toUse.size > hardCap) {
+        toast({
+          title: "File still too large",
+          description: `After optimization the image is still over ${PHOTO_MAX_MB}MB. Try another photo.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      pendingPhotoFileRef.current = toUse;
+      setPhotoPreview(URL.createObjectURL(toUse));
+    } finally {
+      setIsPhotoProcessing(false);
     }
-    if (photoPreview) URL.revokeObjectURL(photoPreview);
-    setPhotoPreview(URL.createObjectURL(file));
   };
 
   const handleRemovePhoto = () => {
     if (photoPreview) URL.revokeObjectURL(photoPreview);
+    pendingPhotoFileRef.current = null;
     setPhotoPreview(null);
     if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
+  const cancelProfileEdit = () => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    pendingPhotoFileRef.current = null;
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setIsEditingProfile(false);
-    toast({
-      title: "Profile updated",
-      description: "Your changes have been saved successfully.",
-    });
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const emailTrim = profileEmail.trim();
+    if (!isValidEmailFormat(emailTrim)) {
+      toast({
+        title: "Invalid email",
+        description: INVALID_EMAIL_MESSAGE,
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!getVendorAuthToken()) {
+      toast({
+        title: "Not signed in",
+        description:
+          "Your session has no auth token. Sign out and sign in again, then try saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const name = formatInstructorFullName(
+      profileFirstName,
+      profileLastName
+    ).trim();
+    setSaveProfileLoading(true);
+    try {
+      let avtarUrl = profile?.avatarUrl;
+      const pendingFile = pendingPhotoFileRef.current;
+      if (pendingFile) {
+        const picRes = await updateProfilePicture(pendingFile);
+        const fromPicture = extractAvtarUrlFromResponse(picRes);
+        if (!fromPicture) {
+          toast({
+            title: "Photo upload unclear",
+            description:
+              "The server accepted the file but the response did not include a recognizable path (e.g. avtarPath). Check the POST /api/account/update_profile_picture JSON shape.",
+            variant: "destructive",
+          });
+          return;
+        }
+        avtarUrl = fromPicture;
+        queryClient.setQueryData(
+          ["vendor", "account", "me"],
+          (prev: AccountMeResponse | undefined) =>
+            mergeProfilePictureUploadIntoAccountMeCache(prev, fromPicture)
+        );
+      }
+
+      const payload: UpdateProfilePayload = {
+        name,
+        email: emailTrim,
+      };
+      if (avtarUrl) {
+        payload.avtarUrl = avtarUrl;
+      }
+
+      await updateProfile(payload);
+
+      if (payload.avtarUrl) {
+        setPersistedAvatarPath(payload.avtarUrl);
+      }
+
+      queryClient.setQueryData(
+        ["vendor", "account", "me"],
+        (prev: AccountMeResponse | undefined) =>
+          mergeSavedProfileIntoAccountMeCache(prev, payload)
+      );
+
+      pendingPhotoFileRef.current = null;
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+      setPhotoPreview(null);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+      setIsEditingProfile(false);
+      toast({
+        title: "Profile updated",
+        description: "Your changes have been saved successfully.",
+      });
+
+      void queryClient.invalidateQueries({
+        queryKey: ["vendor", "account", "me"],
+      });
+    } catch (err) {
+      toast({
+        title: "Could not save profile",
+        description: getAccountMeErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setSaveProfileLoading(false);
+    }
   };
 
   const handleStartKyc = () => {
@@ -154,23 +436,133 @@ export default function SettingsPage() {
     }
   }, [referralCode, toast]);
 
+  const handleChangePasswordSubmit = useCallback(async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast({
+        title: "Validation error",
+        description: "Please fill all fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Passwords do not match",
+        description: "New password and confirmation must match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (newPassword === currentPassword) {
+      toast({
+        title: "Choose a different password",
+        description: "New password must be different from your current password.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!getVendorAuthToken()) {
+      toast({
+        title: "Not signed in",
+        description: "Sign in again, then change your password.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPasswordSubmitLoading(true);
+    try {
+      await changePassword({
+        currentPassword,
+        newPassword,
+      });
+      toast({
+        title: "Password updated",
+        description: "Your password was changed successfully.",
+      });
+      setPasswordOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+    } catch (err) {
+      toast({
+        title: "Could not change password",
+        description: getAccountMeErrorMessage(err),
+        variant: "destructive",
+      });
+    } finally {
+      setPasswordSubmitLoading(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword, toast]);
+
   const razorpayKeyConfigured = Boolean(import.meta.env.VITE_RAZORPAY_KEY_ID?.trim());
 
   const tabTriggerClass =
     "gap-2 rounded-md px-3 py-2.5 text-sm font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm lg:w-full lg:justify-start";
 
+  const verificationSubTabClass =
+    "gap-2 rounded-md px-4 py-2.5 text-sm font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm";
+
   return (
     <div className="mx-auto w-full max-w-5xl pb-16">
-      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
+      <Dialog
+        open={profilePhotoPreviewOpen}
+        onOpenChange={setProfilePhotoPreviewOpen}
+      >
+        <DialogContent className="max-w-[min(96vw,44rem)] gap-0 overflow-hidden p-0 sm:rounded-lg">
+          <DialogHeader className="border-b border-border px-6 py-4 text-left">
+            <DialogTitle className="font-heading text-lg">Profile photo</DialogTitle>
+            <DialogDescription>
+              Full-size preview of your profile picture.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[min(75vh,36rem)] items-center justify-center bg-muted/40 p-4 sm:p-8">
+            {canPreviewProfilePhoto ? (
+              <img
+                src={profilePhotoPreviewSrc}
+                alt="Profile"
+                className="max-h-[min(70vh,34rem)] w-full max-w-full rounded-md object-contain shadow-sm"
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={passwordOpen}
+        onOpenChange={(open) => {
+          setPasswordOpen(open);
+          if (!open) {
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
+            setShowCurrentPassword(false);
+            setShowNewPassword(false);
+            setShowConfirmPassword(false);
+            setPasswordSubmitLoading(false);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Change Password</DialogTitle>
+            <DialogDescription>
+              Enter your current password and a new one. The new password must be different from the current one.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2 relative">
               <Label>Current password</Label>
               <div className="relative">
-                <Input type={showCurrentPassword ? "text" : "password"} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
+                <Input
+                  type={showCurrentPassword ? "text" : "password"}
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={passwordSubmitLoading}
+                  autoComplete="current-password"
+                />
                 <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrentPassword(!showCurrentPassword)}>
                   {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -179,7 +571,13 @@ export default function SettingsPage() {
             <div className="space-y-2 relative">
               <Label>New password</Label>
               <div className="relative">
-                <Input type={showNewPassword ? "text" : "password"} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+                <Input
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={passwordSubmitLoading}
+                  autoComplete="new-password"
+                />
                 <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowNewPassword(!showNewPassword)}>
                   {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -188,7 +586,13 @@ export default function SettingsPage() {
             <div className="space-y-2 relative">
               <Label>Confirm password</Label>
               <div className="relative">
-                <Input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={passwordSubmitLoading}
+                  autoComplete="new-password"
+                />
                 <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowConfirmPassword(!showConfirmPassword)}>
                   {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -196,20 +600,22 @@ export default function SettingsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPasswordOpen(false)}>Cancel</Button>
-            <Button onClick={() => {
-              if (!currentPassword || !newPassword || !confirmPassword) {
-                toast({ title: "Validation error", description: "Please fill all fields.", variant: "destructive" });
-                return;
-              }
-              if (newPassword !== confirmPassword) {
-                toast({ title: "Error", description: "Passwords do not match", variant: "destructive" });
-                return;
-              }
-              toast({ title: "Success", description: "Password changed successfully." });
-              setPasswordOpen(false);
-              setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
-            }} className="gradient-gold text-primary-foreground font-semibold">Change Password</Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={passwordSubmitLoading}
+              onClick={() => setPasswordOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="gradient-gold text-primary-foreground font-semibold"
+              disabled={passwordSubmitLoading}
+              onClick={() => void handleChangePasswordSubmit()}
+            >
+              {passwordSubmitLoading ? "Updating…" : "Change Password"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -252,77 +658,253 @@ export default function SettingsPage() {
                 title="Profile"
                 description="Your public author details and account email. Changes apply after you save."
               >
-                <form onSubmit={handleSave} className="mx-auto max-w-lg space-y-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                    <Avatar className="h-24 w-24 shrink-0 border border-border">
-                      {photoPreview ? <AvatarImage src={photoPreview} alt="Profile photo" /> : null}
-                      <AvatarFallback className="bg-muted text-muted-foreground">
-                        <UserRound className="h-10 w-10" aria-hidden />
+                {profileLoading ? (
+                  <div className="mx-auto max-w-lg space-y-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                      <Skeleton className="h-24 w-24 shrink-0 rounded-full" />
+                      <div className="flex min-w-0 flex-1 flex-col gap-3 pt-2">
+                        <Skeleton className="h-9 w-28" />
+                        <Skeleton className="h-9 w-full max-w-[200px]" />
+                      </div>
+                    </div>
+                    <Separator />
+                    <div className="space-y-3">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-5 w-full max-w-md" />
+                      <Skeleton className="h-4 w-20 pt-4" />
+                      <Skeleton className="h-5 w-full max-w-md" />
+                    </div>
+                  </div>
+                ) : profileError ? (
+                  <Alert variant="destructive" className="mx-auto max-w-lg">
+                    <AlertTitle>Could not load profile</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-sm">
+                        {getAccountMeErrorMessage(profileQueryError)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10"
+                        onClick={() => void refetchProfile()}
+                      >
+                        Retry
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                <form onSubmit={handleSave} className="mx-auto max-w-xl space-y-8">
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 sm:p-6">
+                    <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                      <Avatar className="mx-auto h-28 w-28 shrink-0 border-2 border-background shadow-sm sm:mx-0">
+                      {photoPreview ||
+                      effectiveAvatarStoredPath ||
+                      avatarDisplaySrc ? (
+                        <AvatarImage
+                          key={
+                            effectiveAvatarStoredPath ||
+                            photoPreview ||
+                            "avatar"
+                          }
+                          src={avatarDisplaySrc}
+                          alt="Profile photo"
+                        />
+                      ) : null}
+                      <AvatarFallback className="bg-muted text-muted-foreground text-xl font-semibold">
+                        {profile ? (
+                          profileInitials(
+                            formatInstructorFullName(
+                              profile.firstName,
+                              profile.lastName
+                            ),
+                            profile.email
+                          )
+                        ) : (
+                          <UserRound className="h-12 w-12" aria-hidden />
+                        )}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex min-w-0 flex-1 flex-col gap-2">
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept={PHOTO_ACCEPT}
-                        className="sr-only"
-                        id="profile-photo"
-                        onChange={handlePhotoChange}
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" asChild>
-                          <label htmlFor="profile-photo" className="cursor-pointer">
-                            <Camera className="mr-2 h-4 w-4" aria-hidden />
-                            Change photo
-                          </label>
-                        </Button>
-                        {photoPreview ? (
-                          <Button type="button" variant="ghost" size="sm" onClick={handleRemovePhoto}>
-                            <X className="mr-2 h-4 w-4" aria-hidden />
-                            Remove
+                    <div className="min-w-0 flex-1 space-y-4 text-center sm:text-left">
+                      <div>
+                        <h4 className="text-sm font-semibold tracking-tight text-foreground">
+                          Profile photo
+                        </h4>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {isEditingProfile
+                            ? `JPG, PNG, WebP, or GIF · max ${PHOTO_MAX_MB}MB (larger files are auto-optimized before upload). Your new photo is saved when you click Save changes.`
+                            : "Shown on your author profile. Select Edit profile to upload or replace your photo."}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+                        {canPreviewProfilePhoto ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => setProfilePhotoPreviewOpen(true)}
+                          >
+                            <ImageIcon className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                            Preview
                           </Button>
                         ) : null}
+                        {isEditingProfile ? (
+                          <>
+                            <input
+                              ref={photoInputRef}
+                              type="file"
+                              accept={PHOTO_ACCEPT}
+                              className="sr-only"
+                              id="profile-photo"
+                              disabled={isPhotoProcessing}
+                              onChange={handlePhotoChange}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              disabled={isPhotoProcessing}
+                            >
+                              <label
+                                htmlFor="profile-photo"
+                                className={cn(
+                                  "gap-2",
+                                  isPhotoProcessing
+                                    ? "pointer-events-none cursor-wait opacity-70"
+                                    : "cursor-pointer"
+                                )}
+                              >
+                                <Camera className="h-4 w-4 shrink-0" aria-hidden />
+                                {isPhotoProcessing ? "Optimizing…" : "Change photo"}
+                              </label>
+                            </Button>
+                            {photoPreview ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground"
+                                disabled={isPhotoProcessing}
+                                onClick={handleRemovePhoto}
+                              >
+                                <X className="mr-2 h-4 w-4" aria-hidden />
+                                Remove
+                              </Button>
+                            ) : null}
+                          </>
+                        ) : null}
                       </div>
-                      <p className="text-xs text-muted-foreground">JPG, PNG, WebP, or GIF · max {PHOTO_MAX_MB}MB</p>
+                    </div>
                     </div>
                   </div>
 
-                  <Separator />
+                  <Separator className="bg-border" />
 
                   {isEditingProfile ? (
                     <>
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Display name</Label>
-                        <Input id="name" name="name" value={profileName} onChange={e => setProfileName(e.target.value)} placeholder="Your name" autoComplete="name" />
+                      <div>
+                        <h4 className="mb-4 text-sm font-semibold tracking-tight text-foreground">
+                          Account details
+                        </h4>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="profile-first-name">First name</Label>
+                          <Input
+                            id="profile-first-name"
+                            name="firstName"
+                            value={profileFirstName}
+                            onChange={(e) => setProfileFirstName(e.target.value)}
+                            placeholder="First name"
+                            autoComplete="given-name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="profile-last-name">Last name</Label>
+                          <Input
+                            id="profile-last-name"
+                            name="lastName"
+                            value={profileLastName}
+                            onChange={(e) => setProfileLastName(e.target.value)}
+                            placeholder="Last name"
+                            autoComplete="family-name"
+                          />
+                        </div>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <Input id="email" name="email" type="email" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" />
                       </div>
+                      <ProfileAppearanceSection />
                       <div className="flex flex-wrap gap-3 pt-2">
-                        <Button type="submit" className="gradient-gold text-primary-foreground font-semibold">
-                          Save changes
+                        <Button
+                          type="submit"
+                          className="gradient-gold text-primary-foreground font-semibold"
+                          disabled={saveProfileLoading}
+                        >
+                          {saveProfileLoading ? "Saving…" : "Save changes"}
                         </Button>
-                        <Button type="button" variant="outline" onClick={() => setIsEditingProfile(false)}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={saveProfileLoading}
+                          onClick={cancelProfileEdit}
+                        >
                           Cancel
                         </Button>
+                      </div>
                       </div>
                     </>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-2">
-                        <div className="space-y-1">
-                          <Label className="text-muted-foreground">Display name</Label>
-                          <p className="font-medium text-foreground">{profileName || "Not set"}</p>
+                      <div>
+                        <h4 className="mb-4 text-sm font-semibold tracking-tight text-foreground">
+                          Account details
+                        </h4>
+                      <div className="grid grid-cols-1 gap-6 pb-1 sm:grid-cols-2">
+                        <div className="space-y-1 sm:col-span-2">
+                          <Label className="text-muted-foreground">Instructor name</Label>
+                          <p className="font-medium text-foreground">
+                            {profile
+                              ? formatInstructorFullName(
+                                  profile.firstName,
+                                  profile.lastName
+                                ).trim() || "—"
+                              : "—"}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-muted-foreground">Email</Label>
-                          <p className="font-medium text-foreground">{profileEmail}</p>
+                          <p className="font-medium text-foreground">
+                            {profile?.email?.trim() ? profile.email : "—"}
+                          </p>
                         </div>
+                        {profile?.phone?.trim() ? (
+                          <div className="space-y-1">
+                            <Label className="text-muted-foreground">Phone</Label>
+                            <p className="font-medium text-foreground">{profile.phone}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                      <ProfileAppearanceSection />
                       </div>
                       
-                      <div className="flex flex-wrap gap-3 border-t border-border pt-6 items-center">
-                        <Button type="button" onClick={() => setIsEditingProfile(true)} className="gradient-gold text-primary-foreground font-semibold">
+                      <div className="flex flex-wrap gap-3 border-t border-border pt-6">
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (photoPreview) URL.revokeObjectURL(photoPreview);
+                            pendingPhotoFileRef.current = null;
+                            setPhotoPreview(null);
+                            if (photoInputRef.current) photoInputRef.current.value = "";
+                            setProfileFirstName(profile?.firstName ?? "");
+                            setProfileLastName(profile?.lastName ?? "");
+                            setProfileEmail(profile?.email ?? "");
+                            setIsEditingProfile(true);
+                          }}
+                          className="gradient-gold text-primary-foreground font-semibold"
+                        >
                           Edit Profile
                         </Button>
                         <Button type="button" variant="outline" onClick={() => setPasswordOpen(true)}>
@@ -332,6 +914,7 @@ export default function SettingsPage() {
                     </>
                   )}
                 </form>
+                )}
               </SettingsPanel>
             </TabsContent>
 
@@ -340,10 +923,27 @@ export default function SettingsPage() {
               className="m-0 outline-none focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=inactive]:hidden"
             >
               <SettingsPanel
-                title="Verify account (KYC)"
-                description="Complete identity verification through Razorpay before payouts or certain publisher actions."
+                title="Verification"
+                description="Razorpay identity checks and bank details for payouts."
               >
-                <div className="space-y-6">
+                <Tabs
+                  value={verificationPane}
+                  onValueChange={(v) => setVerificationPane(v as "kyc" | "bank")}
+                  className="w-full"
+                >
+                  <TabsList className="mb-6 flex h-auto w-full flex-wrap gap-1 rounded-lg border border-border bg-muted/40 p-1">
+                    <TabsTrigger value="kyc" className={verificationSubTabClass}>
+                      Razorpay KYC
+                    </TabsTrigger>
+                    <TabsTrigger value="bank" className={verificationSubTabClass}>
+                      Bank details
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent
+                    value="kyc"
+                    className="m-0 mt-0 space-y-6 outline-none focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=inactive]:hidden"
+                  >
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary" className="font-normal">
                       Razorpay
@@ -397,7 +997,15 @@ export default function SettingsPage() {
                       </a>
                     </Button>
                   </div>
-                </div>
+                  </TabsContent>
+
+                  <TabsContent
+                    value="bank"
+                    className="m-0 mt-0 outline-none focus-visible:ring-0 focus-visible:ring-offset-0 data-[state=inactive]:hidden"
+                  >
+                    <BankDetailsSection />
+                  </TabsContent>
+                </Tabs>
               </SettingsPanel>
             </TabsContent>
 
