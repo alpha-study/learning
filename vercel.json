@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/vendor-api/:path*",
+      "destination": "https://dev.alpha.study/vendor/:path*"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "https://dev.alpha.study/assets/:path*"
+    }
+  ]
+}

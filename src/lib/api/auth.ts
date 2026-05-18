@@ -168,7 +168,13 @@ export function getLoginErrorMessage(error: unknown): string {
     return "Request timed out. Check your network and try again.";
   }
   if (error instanceof TypeError) {
-    return "Could not reach the API. From localhost, run `npm run dev` so requests use the dev proxy, or the server must allow your site origin (CORS).";
+    const onLocalhost =
+      typeof window !== "undefined" &&
+      /^localhost$|^127\.0\.0\.1$/i.test(window.location.hostname);
+    if (onLocalhost) {
+      return "Could not reach the API. Run `npm run dev` so requests use the `/vendor-api` proxy, or set VITE_API_BASE_URL to a reachable API URL.";
+    }
+    return "Could not reach the API. Your host must proxy `/vendor-api` to the vendor API (see vercel.json / netlify.toml), or the API must allow this site's origin (CORS).";
   }
   if (error instanceof Error) return error.message;
   return "Something went wrong";
