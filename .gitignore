@@ -14,6 +14,8 @@ dist-ssr
 
 # Local secrets and overrides (set on Vercel / your machine)
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 

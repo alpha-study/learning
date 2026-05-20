@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, GraduationCap, HelpCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RichContent } from "@/components/RichContent";
 import type { CourseAssessmentListItem } from "@/lib/api/course-curriculum";
 
 type CourseAssessmentPreviewDialogProps = {
@@ -83,9 +84,10 @@ export function CourseAssessmentPreviewDialog({
                     {questionTypeLabel(q.questionType)}
                   </Badge>
                 </div>
-                <p className="whitespace-pre-wrap text-base font-bold leading-snug text-foreground">
-                  {q.questionText}
-                </p>
+                <RichContent
+                  content={q.questionText}
+                  className="text-base font-bold leading-snug"
+                />
                 {q.options.length > 0 ? (
                   <ul className="grid grid-cols-1 gap-2">
                     {q.options.map((opt, optIndex) => (
@@ -108,9 +110,10 @@ export function CourseAssessmentPreviewDialog({
                         >
                           {String.fromCharCode(65 + optIndex)}
                         </span>
-                        <span className="min-w-0 flex-1 whitespace-pre-wrap font-medium leading-snug">
-                          {opt.label}
-                        </span>
+                        <RichContent
+                          content={opt.label}
+                          className="min-w-0 flex-1 font-medium leading-snug"
+                        />
                         {opt.isCorrect ? (
                           <span className="flex shrink-0 items-center gap-1 text-xs font-bold text-green-700">
                             <CheckCircle2 className="h-4 w-4" aria-hidden />
@@ -130,10 +133,14 @@ export function CourseAssessmentPreviewDialog({
                   </p>
                 ) : null}
                 {correctOptions.length > 0 ? (
-                  <p className="rounded-lg border border-green-600/30 bg-green-50/60 px-3 py-2 text-sm font-medium text-green-900 dark:bg-green-950/30 dark:text-green-100">
-                    <span className="font-bold">Correct answer{correctOptions.length > 1 ? "s" : ""}: </span>
-                    {correctOptions.map((o) => o.label).join(" · ")}
-                  </p>
+                  <div className="space-y-2 rounded-lg border border-green-600/30 bg-green-50/60 px-3 py-2 text-sm font-medium text-green-900 dark:bg-green-950/30 dark:text-green-100">
+                    <p className="font-bold">
+                      Correct answer{correctOptions.length > 1 ? "s" : ""}:
+                    </p>
+                    {correctOptions.map((o) => (
+                      <RichContent key={o.id} content={o.label} className="text-green-900 dark:text-green-100" />
+                    ))}
+                  </div>
                 ) : null}
               </div>
             );

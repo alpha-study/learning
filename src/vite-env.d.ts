@@ -61,11 +61,13 @@ interface ImportMetaEnv {
   readonly VITE_COURSE_CREATE_MAX_TOTAL_BYTES?: string;
   /** POST path for lecture create after upload_assets (default: /api/course/lecture/create). */
   readonly VITE_COURSE_LECTURE_CREATE_PATH?: string;
+  /** PUT path for lecture update; use `{id}` (default: /api/course/lecture/update/{id}). */
+  readonly VITE_COURSE_LECTURE_UPDATE_PATH?: string;
   /** JSON: course id field on lecture create (default: courseId). */
   readonly VITE_COURSE_LECTURE_CREATE_JSON_COURSE_ID_FIELD?: string;
-  /** JSON: chapter title field on lecture create (default: chapterTitle). */
+  /** JSON: lecture title field on lecture create (default: title). */
   readonly VITE_COURSE_LECTURE_CREATE_JSON_CHAPTER_TITLE_FIELD?: string;
-  /** JSON: uploaded video file id on lecture create (default: videoFileId). */
+  /** JSON: uploaded video file id on lecture create/update (default: assetFileId). */
   readonly VITE_COURSE_LECTURE_CREATE_JSON_VIDEO_FILE_ID_FIELD?: string;
   /** DELETE lecture path; use `{id}` or trailing path + id (default: /api/course/lecture/delete/{id}). */
   readonly VITE_COURSE_LECTURE_DELETE_PATH?: string;

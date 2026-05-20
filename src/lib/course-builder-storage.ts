@@ -32,6 +32,7 @@ export type PersistedChapter = {
   name: string;
   lectureSaved: boolean;
   lectureRemoteId?: string;
+  videoFileId?: number;
   /** Server video URL (not a blob URL). */
   videoPreviewUrl?: string;
   assessmentSaved: boolean;

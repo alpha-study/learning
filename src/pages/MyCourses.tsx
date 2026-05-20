@@ -14,6 +14,16 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -115,10 +125,19 @@ export default function MyCourses() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState("10");
 
+  const [editingCourse, setEditingCourse] = useState<CourseListDisplay | null>(null);
   const [deletingCourse, setDeletingCourse] = useState<CourseListDisplay | null>(null);
   const [deleteWord, setDeleteWord] = useState("");
+  const [deleteFinalConfirmOpen, setDeleteFinalConfirmOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const resetDeleteFlow = () => {
+    setDeletingCourse(null);
+    setDeleteWord("");
+    setDeleteError(null);
+    setDeleteFinalConfirmOpen(false);
+  };
 
   const pageSize = parseInt(itemsPerPage, 10);
 
@@ -147,6 +166,18 @@ export default function MyCourses() {
     setCurrentPage(1);
   }, [searchQuery, itemsPerPage]);
 
+  const confirmEditCourse = () => {
+    if (!editingCourse) return;
+    navigate(`/my-courses/upload?courseId=${editingCourse.id}`);
+    setEditingCourse(null);
+  };
+
+  const requestDeleteFinalConfirm = () => {
+    if (!deletingCourse || deleteWord !== "DELETE" || deleteSubmitting) return;
+    setDeleteError(null);
+    setDeleteFinalConfirmOpen(true);
+  };
+
   const handleDelete = async () => {
     if (!deletingCourse || deleteWord !== "DELETE" || deleteSubmitting) return;
 
@@ -157,8 +188,7 @@ export default function MyCourses() {
       const message =
         extractDeleteCourseMessage(res) ?? "Course deleted successfully";
       toast({ title: message });
-      setDeletingCourse(null);
-      setDeleteWord("");
+      resetDeleteFlow();
 
       const remainingOnPage = courses.length - 1;
       if (remainingOnPage === 0 && currentPage > 1) {
@@ -334,7 +364,7 @@ export default function MyCourses() {
                                 variant="outline"
                                 size="icon"
                                 className="h-9 w-9 border-2 hover:bg-primary/5"
-                                onClick={() => navigate(`/my-courses/upload?courseId=${course.id}`)}
+                                onClick={() => setEditingCourse(course)}
                                 title="Edit Course"
                               >
                                 <Edit className="h-4 w-4 text-primary" />
@@ -430,7 +460,7 @@ export default function MyCourses() {
                             variant="outline"
                             size="icon"
                             className="h-10 w-10 border-2 rounded-xl"
-                            onClick={() => navigate(`/my-courses/upload?courseId=${course.id}`)}
+                            onClick={() => setEditingCourse(course)}
                           >
                             <Edit className="h-5 w-5 text-primary" />
                           </Button>
@@ -520,13 +550,40 @@ export default function MyCourses() {
         )}
       </div>
 
+      <AlertDialog
+        open={!!editingCourse}
+        onOpenChange={(open) => {
+          if (!open) setEditingCourse(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold">Edit course?</AlertDialogTitle>
+            <AlertDialogDescription className="text-md">
+              You&apos;ll open the course editor for{" "}
+              <span className="font-bold text-foreground">
+                &quot;{editingCourse?.title}&quot;
+              </span>
+              . You can update each section and save your changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel className="h-12 border-2">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-12 min-w-[10rem] gradient-gold font-bold text-primary-foreground"
+              onClick={confirmEditCourse}
+            >
+              Open editor
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog
-        open={!!deletingCourse}
+        open={!!deletingCourse && !deleteFinalConfirmOpen}
         onOpenChange={(open) => {
           if (!open && !deleteSubmitting) {
-            setDeletingCourse(null);
-            setDeleteWord("");
-            setDeleteError(null);
+            resetDeleteFlow();
           }
         }}
       >
@@ -549,7 +606,7 @@ export default function MyCourses() {
               </Label>
               <Input
                 value={deleteWord}
-                onChange={(e) => setDeleteWord(e.target.value)}
+                onChange={(e) => setDeleteWord(e.target.value.toUpperCase())}
                 placeholder="DELETE"
                 className="h-12 border-2 text-center font-bold tracking-[0.2em]"
                 disabled={deleteSubmitting}
@@ -566,11 +623,7 @@ export default function MyCourses() {
               variant="outline"
               className="h-12 border-2"
               disabled={deleteSubmitting}
-              onClick={() => {
-                setDeletingCourse(null);
-                setDeleteWord("");
-                setDeleteError(null);
-              }}
+              onClick={resetDeleteFlow}
             >
               Cancel
             </Button>
@@ -578,7 +631,76 @@ export default function MyCourses() {
               variant="destructive"
               className="h-12 font-bold"
               disabled={deleteWord !== "DELETE" || deleteSubmitting}
-              onClick={() => void handleDelete()}
+              onClick={requestDeleteFinalConfirm}
+            >
+              Confirm Permanent Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteFinalConfirmOpen && !!deletingCourse}
+        onOpenChange={(open) => {
+          if (!open && !deleteSubmitting) {
+            setDeleteFinalConfirmOpen(false);
+            setDeleteError(null);
+          }
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold">
+              What happens for students?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 text-sm text-muted-foreground">
+                <p>
+                  You are about to permanently delete{" "}
+                  <span className="font-bold text-foreground">
+                    &quot;{deletingCourse?.title}&quot;
+                  </span>
+                  .
+                </p>
+                <ul className="list-disc space-y-2 pl-5">
+                  <li>
+                    The course will be removed from your catalog and will no longer be
+                    available to new students.
+                  </li>
+                  <li>
+                    Students who have not purchased will lose access to this course.
+                  </li>
+                  <li>
+                    <span className="font-semibold text-foreground">
+                      Students who already bought this course will still be able to view
+                      it
+                    </span>{" "}
+                    in their library.
+                  </li>
+                </ul>
+                <p className="text-xs">
+                  This cannot be undone. Associated media will be removed from our
+                  servers according to platform policy.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p className="text-sm text-destructive font-medium" role="alert">
+              {deleteError}
+            </p>
+          )}
+          <AlertDialogFooter className="mt-2 gap-2 sm:gap-0">
+            <AlertDialogCancel className="h-12 border-2" disabled={deleteSubmitting}>
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="h-12 bg-destructive font-bold text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteSubmitting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
             >
               {deleteSubmitting ? (
                 <>
@@ -586,12 +708,12 @@ export default function MyCourses() {
                   Deleting…
                 </>
               ) : (
-                "Confirm Permanent Delete"
+                "Delete course permanently"
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

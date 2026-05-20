@@ -40,15 +40,14 @@ export default function Index() {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
 
-    const goDashboardIfMock = () => {
+    const goDashboardAfterLogin = () => {
       if (isMockAuthenticated()) navigate("/dashboard");
     };
-    goDashboardIfMock();
-    window.addEventListener(MOCK_AUTH_EVENT, goDashboardIfMock);
+    window.addEventListener(MOCK_AUTH_EVENT, goDashboardAfterLogin);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener(MOCK_AUTH_EVENT, goDashboardIfMock);
+      window.removeEventListener(MOCK_AUTH_EVENT, goDashboardAfterLogin);
     };
   }, [navigate]);
 

@@ -15,7 +15,6 @@ import {
   Calendar,
   Tag,
   Edit,
-  ExternalLink,
   Loader2,
   BookOpen,
   Globe,
@@ -265,13 +264,6 @@ export default function CourseDetails() {
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Button
-            variant="outline"
-            className="border-2 font-bold"
-            onClick={() => window.open("/", "_blank")}
-          >
-            <ExternalLink className="mr-2 h-4 w-4" /> Live Preview
-          </Button>
           <Button
             className="gradient-gold font-bold shadow-lg"
             onClick={() => navigate(`/my-courses/upload?courseId=${course.id}`)}

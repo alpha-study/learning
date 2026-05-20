@@ -26,6 +26,7 @@ import {
 } from "@/lib/course-upload-limits";
 import { setUploadProgress } from "@/lib/upload-progress";
 import { formatFileSize } from "@/lib/utils";
+import { normalizeCourseLanguageForApi } from "@/lib/course-languages";
 
 export {
   DELETE_LECTURE_PATH_PREFIX,
@@ -751,6 +752,15 @@ export interface CreateCourseLecturePayload {
   video: File;
 }
 
+export interface UpdateCourseLecturePayload {
+  lectureId: string;
+  courseId: string;
+  chapterTitle: string;
+  /** New upload; when omitted, `videoFileId` is sent for title-only updates. */
+  video?: File;
+  videoFileId?: number;
+}
+
 export interface AssessmentQuestionOption {
   option: string;
   isCorrect: boolean;
@@ -854,10 +864,27 @@ export function createLecturePath(): string {
   return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
+/** PUT /api/course/lecture/update/{id} — update title and/or video file id. */
+export const UPDATE_LECTURE_PATH_TEMPLATE = "/api/course/lecture/update/{id}";
+
+export function updateLecturePath(lectureId: string | number): string {
+  const id = encodeURIComponent(String(lectureId).trim());
+  const custom = import.meta.env.VITE_COURSE_LECTURE_UPDATE_PATH?.trim();
+  if (custom) {
+    return custom.includes("{id}")
+      ? custom.replace(/\{id\}/g, id)
+      : `${custom.replace(/\/+$/, "")}/${id}`;
+  }
+  return UPDATE_LECTURE_PATH_TEMPLATE.replace("{id}", id);
+}
+
 /** JSON body for POST /api/course/lecture/create (after upload_assets → fileId). */
 export interface CreateLectureRequestBody {
   courseId: number | string;
-  chapterTitle: string;
+  /** Lecture title (same field as GET /api/course/{id}/lectures `title`). */
+  title: string;
+  /** Legacy alias; sent when env overrides the title key away from `title`. */
+  chapterTitle?: string;
   /** Uploaded lecture video id from POST /api/course/upload_assets. */
   videoFileId: number;
 }
@@ -895,14 +922,14 @@ function lectureJsonCourseIdKey(): string {
 function lectureJsonChapterTitleKey(): string {
   return (
     import.meta.env.VITE_COURSE_LECTURE_CREATE_JSON_CHAPTER_TITLE_FIELD?.trim() ||
-    "chapterTitle"
+    "title"
   );
 }
 
 function lectureJsonVideoFileIdKey(): string {
   return (
     import.meta.env.VITE_COURSE_LECTURE_CREATE_JSON_VIDEO_FILE_ID_FIELD?.trim() ||
-    "videoFileId"
+    "assetFileId"
   );
 }
 
@@ -949,7 +976,7 @@ export function buildCreateCourseRequestBody(
   const body: Record<string, unknown> = {
     title: payload.title.trim(),
     [jsonDescKey()]: payload.about.trim(),
-    language: payload.language.trim(),
+    language: normalizeCourseLanguageForApi(payload.language),
     price: priceNum,
     [promotionVideoFileIdJsonKey()]: fileIds.promotionVideoFileId,
     [coverThumbnailFileIdJsonKey()]: fileIds.coverThumbnailFileId,
@@ -1152,6 +1179,31 @@ export function extractCreateLectureData(data: unknown): CreateLectureData | und
   return inner as CreateLectureData;
 }
 
+/** Video file id from lecture create/update `data`. */
+export function extractVideoFileIdFromLectureResponse(data: unknown): number | undefined {
+  const fromData = extractCreateLectureData(data);
+  const pick = (o: Record<string, unknown> | CreateLectureData | undefined) => {
+    if (!o || typeof o !== "object") return undefined;
+    const id =
+      (o as CreateLectureData).videoFileId ??
+      (o as Record<string, unknown>).assetFileId ??
+      (o as CreateLectureData).fileId ??
+      (o as Record<string, unknown>).video_file_id ??
+      (o as Record<string, unknown>).asset_file_id ??
+      (o as Record<string, unknown>).file_id;
+    if (typeof id === "number" && Number.isFinite(id)) return id;
+    if (typeof id === "string" && id.trim()) {
+      const n = Number.parseInt(id, 10);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  };
+  const fromInner = pick(fromData);
+  if (fromInner != null) return fromInner;
+  if (!data || typeof data !== "object") return undefined;
+  return pick(data as Record<string, unknown>);
+}
+
 /** Lecture id from POST /api/course/lecture/create (`data.id` or equivalent). */
 export function extractLectureIdFromCreateResponse(data: unknown): string | undefined {
   const fromData = extractCreateLectureData(data);
@@ -1289,16 +1341,57 @@ export async function createCourseAssessment(
   );
 }
 
+function buildLectureWriteJsonBody(input: {
+  courseId: string;
+  title: string;
+  videoFileId?: number;
+}): Record<string, unknown> {
+  const title = input.title.trim();
+  const titleKey = lectureJsonChapterTitleKey();
+  const body: Record<string, unknown> = {
+    [lectureJsonCourseIdKey()]: parseCourseIdForJson(input.courseId),
+  };
+  body.title = title;
+  if (titleKey !== "title") {
+    body[titleKey] = title;
+  }
+  if (titleKey !== "chapterTitle") {
+    body.chapterTitle = title;
+  }
+  if (input.videoFileId != null) {
+    const fileId = input.videoFileId;
+    // POST/PUT lecture endpoints validate `assetFileId` (upload_assets → fileId).
+    body.assetFileId = fileId;
+    body[lectureJsonVideoFileIdKey()] = fileId;
+    if (lectureJsonVideoFileIdKey() !== "videoFileId") {
+      body.videoFileId = fileId;
+    }
+    if (lectureJsonVideoFileIdKey() !== "fileId") {
+      body.fileId = fileId;
+    }
+  }
+  return body;
+}
+
 export function buildCreateLectureRequestBody(
   payload: CreateCourseLecturePayload,
   videoFileId: number
 ): CreateLectureRequestBody {
-  const body: Record<string, unknown> = {
-    [lectureJsonCourseIdKey()]: parseCourseIdForJson(payload.courseId),
-    [lectureJsonChapterTitleKey()]: payload.chapterTitle.trim(),
-    [lectureJsonVideoFileIdKey()]: videoFileId,
-  };
-  return body as CreateLectureRequestBody;
+  return buildLectureWriteJsonBody({
+    courseId: payload.courseId,
+    title: payload.chapterTitle,
+    videoFileId,
+  }) as CreateLectureRequestBody;
+}
+
+export function buildUpdateLectureRequestBody(
+  payload: UpdateCourseLecturePayload
+): Record<string, unknown> {
+  return buildLectureWriteJsonBody({
+    courseId: payload.courseId,
+    title: payload.chapterTitle,
+    videoFileId: payload.videoFileId,
+  });
 }
 
 /** POST /api/course/lecture/create — JSON, Bearer auth. */
@@ -1337,6 +1430,57 @@ export async function createCourseLecture(
   payload: CreateCourseLecturePayload
 ): Promise<CreateLectureResponse> {
   return createCourseLectureWithVideo(payload);
+}
+
+/** PUT /api/course/lecture/update/{id} — JSON, Bearer auth. */
+export async function putUpdateLecture(
+  lectureId: string | number,
+  body: Record<string, unknown>
+): Promise<CreateLectureApiResponse> {
+  const id = String(lectureId).trim();
+  if (!id) {
+    throw new Error("Lecture id is required to update.");
+  }
+  return apiPutJson<CreateLectureApiResponse>(updateLecturePath(id), body, {
+    timeoutMs: CREATE_LECTURE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Update a saved lecture: optional new video upload, then PUT /api/course/lecture/update/{id}.
+ */
+export async function updateCourseLecture(
+  payload: UpdateCourseLecturePayload
+): Promise<CreateLectureApiResponse> {
+  const title = payload.chapterTitle.trim();
+  if (!title) {
+    throw new Error("Lecture title is required.");
+  }
+  const lectureId = payload.lectureId.trim();
+  if (!lectureId) {
+    throw new Error("Lecture id is required to update.");
+  }
+
+  const chapterLabel = title || "lesson";
+  setUploadProgress({ label: `Updating "${chapterLabel}"…`, percent: 0 });
+  try {
+    let videoFileId = payload.videoFileId;
+    if (payload.video) {
+      videoFileId = await uploadCourseLectureVideo(payload.video, {
+        label: `Uploading "${chapterLabel}"…`,
+        startPercent: 0,
+        endPercent: 88,
+      });
+    }
+    setUploadProgress({ label: "Saving lesson…", percent: 92 });
+    const body = buildUpdateLectureRequestBody({
+      ...payload,
+      videoFileId,
+    });
+    return await putUpdateLecture(lectureId, body);
+  } finally {
+    setUploadProgress(null);
+  }
 }
 
 /** PATCH /api/courses/{id}/request_review — submit course for review (Review step). */

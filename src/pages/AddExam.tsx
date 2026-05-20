@@ -38,6 +38,12 @@ import {
   setExamSavedResult,
   clearExamBuilderContext,
 } from "@/lib/exam-builder-context";
+import { ScienceSymbolKeyboard } from "@/components/ScienceSymbolKeyboard";
+import {
+  focusTextareaSelection,
+  insertAtTextareaCaret,
+  type InsertAtCaretOptions,
+} from "@/lib/insert-at-textarea-caret";
 
 function finishAfterExamSave(navigate: ReturnType<typeof useNavigate>) {
   if (window.opener && !window.opener.closed) {
@@ -127,6 +133,8 @@ export default function AddExam() {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const allowLeaveRef = useRef(false);
+  const questionPromptRef = useRef<HTMLTextAreaElement>(null);
+  const pendingQuestionSelectionRef = useRef<{ start: number; end: number } | null>(null);
 
   const navigationBlocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -171,6 +179,14 @@ export default function AddExam() {
   }, [currentQuestionIndex, questions.length]);
 
   const currentQuestion = questions[currentQuestionIndex];
+
+  useEffect(() => {
+    const pending = pendingQuestionSelectionRef.current;
+    const textarea = questionPromptRef.current;
+    if (!pending || !textarea) return;
+    pendingQuestionSelectionRef.current = null;
+    focusTextareaSelection(textarea, pending.start, pending.end);
+  }, [currentQuestion?.text, currentQuestionIndex]);
   const isFirstQuestion = currentQuestionIndex === 0;
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
@@ -225,6 +241,23 @@ export default function AddExam() {
       }
       return q;
     }));
+  };
+
+  const insertIntoQuestionPrompt = (snippet: string, options?: InsertAtCaretOptions) => {
+    if (!currentQuestion) return;
+    const textarea = questionPromptRef.current;
+    if (!textarea) {
+      updateQuestion(currentQuestion.id, "text", currentQuestion.text + snippet);
+      return;
+    }
+    const { value, selectionStart, selectionEnd } = insertAtTextareaCaret(
+      textarea,
+      currentQuestion.text,
+      snippet,
+      options,
+    );
+    pendingQuestionSelectionRef.current = { start: selectionStart, end: selectionEnd };
+    updateQuestion(currentQuestion.id, "text", value);
   };
 
   const toggleCorrectAnswer = (qId: string, optIdx: number) => {
@@ -434,14 +467,23 @@ export default function AddExam() {
                       </Button>
                     ) : null}
                   </div>
-                  <Textarea
-                    id={`question-prompt-${currentQuestion.id}`}
-                    placeholder="What should students answer?"
-                    value={currentQuestion.text}
-                    onChange={(e) => updateQuestion(currentQuestion.id, "text", e.target.value)}
-                    className="min-h-[100px] resize-y border-border/80 bg-background text-base leading-relaxed"
-                    rows={3}
-                  />
+                  <div className="relative">
+                    <ScienceSymbolKeyboard
+                      onInsert={insertIntoQuestionPrompt}
+                      disabled={saving}
+                      className="absolute right-2 top-2 z-10"
+                    />
+                    <Textarea
+                      ref={questionPromptRef}
+                      id={`question-prompt-${currentQuestion.id}`}
+                      placeholder="What should students answer?"
+                      value={currentQuestion.text}
+                      onChange={(e) => updateQuestion(currentQuestion.id, "text", e.target.value)}
+                      className="min-h-[100px] resize-y border-border/80 bg-background pr-12 text-base leading-relaxed"
+                      rows={3}
+                      disabled={saving}
+                    />
+                  </div>
                 </section>
 
                 <section className="space-y-4">
@@ -504,6 +546,7 @@ export default function AddExam() {
                               "h-11 border-border/80 bg-background text-base",
                               isCorrect && "border-green-500/40 focus-visible:ring-green-500/30"
                             )}
+                            disabled={saving}
                             aria-label={`Answer choice ${choiceLetter}`}
                           />
                         </div>

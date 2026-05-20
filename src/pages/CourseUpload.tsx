@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBlocker, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, skipToken } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,8 @@ import {
   fetchCourseByIdRaw,
   resolveCourseMediaSrc,
   createCourseLectureWithVideo,
+  updateCourseLecture,
+  extractVideoFileIdFromLectureResponse,
   deleteCourseLecture,
   deleteCourseAssessment,
   COURSE_ASSESSMENT_TYPE_MCQ,
@@ -110,6 +112,12 @@ import {
 } from "@/lib/api/streams";
 import { fetchClasses, parseClassesOptions } from "@/lib/api/classes";
 import { clearAssessmentSnapshot } from "@/lib/assessment-snapshot-storage";
+import {
+  COURSE_INSTRUCTION_LANGUAGE_OPTIONS,
+  getCourseInstructionLanguageFieldError,
+  getCourseLanguageApiFieldError,
+  isCourseLanguageApiValidationError,
+} from "@/lib/course-languages";
 import { CourseAssessmentPreviewDialog } from "@/components/CourseAssessmentPreviewDialog";
 import { CourseUploadReviewStep } from "@/components/CourseUploadReviewStep";
 import { ApiError } from "@/lib/api/client";
@@ -148,6 +156,8 @@ interface Chapter {
   assessmentSaved: boolean;
   /** Set after successful POST /api/course/lecture/create when the API returns an id. */
   lectureRemoteId?: string;
+  /** Server video file id from create/update or GET lectures — used when saving title only. */
+  videoFileId?: number;
   /** Set after successful POST /api/course/assessment/create when the API returns an id. */
   assessmentRemoteId?: string;
   assessmentDurationMinutes?: number;
@@ -239,17 +249,30 @@ const CORE_CLASSES = [
   { value: "Other", label: "Other" },
 ] as const;
 
-const LANGUAGE_OPTIONS: SearchableSelectOption[] = [
-  { value: "English", label: "English" },
-  { value: "Hindi", label: "Hindi" },
-  { value: "Spanish", label: "Spanish" },
-];
+const LANGUAGE_OPTIONS = COURSE_INSTRUCTION_LANGUAGE_OPTIONS;
 
 /**
  * “Core subject course” (department / branch / class). When `true`, shows the
  * Basic Info section, validation, GET /api/faculties|streams|classes usage, and create-course fields.
  */
 const CORE_SUBJECT_COURSE_ENABLED = true;
+
+function getCourseBuilderExitConfirmCopy(isEditingCourse: boolean) {
+  if (isEditingCourse) {
+    return {
+      title: "Discard unsaved changes?",
+      description:
+        "You are about to leave course editing. Unsaved changes from this session will be lost.",
+      confirmLabel: "Leave without saving",
+    };
+  }
+  return {
+    title: "Discard draft?",
+    description:
+      "You are about to exit the course builder. Any current progress will be lost.",
+    confirmLabel: "Discard Changes",
+  };
+}
 
 type BasicInfoFieldErrors = {
   title?: string;
@@ -276,8 +299,9 @@ function validateBasicInfoFields(params: {
     errors.title = "Title must be between 3 and 100 characters.";
   }
 
-  if (!params.language.trim()) {
-    errors.language = "Language is required.";
+  const languageError = getCourseInstructionLanguageFieldError(params.language);
+  if (languageError) {
+    errors.language = languageError;
   }
 
   const priceTrim = params.price.trim();
@@ -381,6 +405,7 @@ function lecturesToChapters(lectures: CourseLectureListItem[]): Chapter[] {
     videoPreview: l.videoPreviewUrl ?? null,
     lectureSaved: true,
     lectureRemoteId: l.id,
+    videoFileId: l.videoFileId,
     assessmentSaved: false,
   }));
 }
@@ -394,6 +419,7 @@ function persistedChaptersToUi(chapters: PersistedChapter[]): Chapter[] {
     videoPreview: c.videoPreviewUrl ?? null,
     lectureSaved: c.lectureSaved,
     lectureRemoteId: c.lectureRemoteId,
+    videoFileId: c.videoFileId,
     assessmentSaved: c.assessmentSaved,
     assessmentRemoteId: c.assessmentRemoteId,
     assessmentDurationMinutes: c.assessmentDurationMinutes,
@@ -411,6 +437,7 @@ function buildPersistedCurriculum(
       name: c.name,
       lectureSaved: c.lectureSaved,
       lectureRemoteId: c.lectureRemoteId,
+      videoFileId: c.videoFileId,
       videoPreviewUrl:
         c.videoPreview && !c.videoPreview.startsWith("blob:")
           ? c.videoPreview
@@ -480,8 +507,11 @@ const ABOUT_TEXTAREA_MAX_HEIGHT_PX = 384;
 
 export default function CourseUpload() {
   const navigate = useNavigate();
+  const allowLeaveRef = useRef(false);
   const [searchParams] = useSearchParams();
   const editCourseIdParam = searchParams.get("courseId")?.trim() || undefined;
+  const isEditingCourse = Boolean(editCourseIdParam);
+  const exitConfirmCopy = getCourseBuilderExitConfirmCopy(isEditingCourse);
   const { toast } = useToast();
 
   const initialWizard = useMemo(() => loadPersistedWizard(), []);
@@ -489,6 +519,11 @@ export default function CourseUpload() {
   // Step Management
   const [currentStep, setCurrentStep] = useState(initialWizard.currentStep);
   const [backConfirmOpen, setBackConfirmOpen] = useState(false);
+  const [mandatoryStepDialog, setMandatoryStepDialog] = useState<{
+    title: string;
+    messages: string[];
+  } | null>(null);
+  const [editDoneConfirmOpen, setEditDoneConfirmOpen] = useState(false);
   const [uploadConfirmOpen, setUploadConfirmOpen] = useState(false);
   const [submittingForReview, setSubmittingForReview] = useState(false);
   const [viewingMedia, setViewingMedia] = useState<{ type: 'video' | 'image', url: string } | null>(null);
@@ -887,6 +922,35 @@ export default function CourseUpload() {
     chapters.length > 0 && chapters.every((ch) => ch.lectureSaved);
   const curriculumLectureSaveInFlight = savingLectureChapterId !== null;
 
+  const leaveSaveInFlight =
+    courseDraftSaving ||
+    submittingForReview ||
+    curriculumLectureSaveInFlight ||
+    uploadingStudyMaterial;
+
+  const navigationBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !allowLeaveRef.current &&
+      !leaveSaveInFlight &&
+      currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (navigationBlocker.state === "blocked") {
+      setBackConfirmOpen(true);
+    }
+  }, [navigationBlocker.state]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowLeaveRef.current || leaveSaveInFlight) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [leaveSaveInFlight]);
+
   const resolveCourseDraftId = useCallback((): string | undefined => {
     if (editCourseIdParam) return editCourseIdParam;
     const fromState = courseDraftId?.trim();
@@ -1277,6 +1341,7 @@ export default function CourseUpload() {
               videoPreview: null,
               lectureSaved: false,
               lectureRemoteId: undefined,
+              videoFileId: undefined,
               assessmentSaved: false,
               assessmentRemoteId: undefined,
               assessmentDurationMinutes: undefined,
@@ -1298,7 +1363,6 @@ export default function CourseUpload() {
             video: file,
             videoPreview: url,
             lectureSaved: false,
-            lectureRemoteId: undefined,
             assessmentSaved: false,
             assessmentRemoteId: undefined,
             assessmentDurationMinutes: undefined,
@@ -1309,10 +1373,6 @@ export default function CourseUpload() {
             ...ch,
             name: value as string,
             lectureSaved: false,
-            lectureRemoteId: undefined,
-            assessmentSaved: false,
-            assessmentRemoteId: undefined,
-            assessmentDurationMinutes: undefined,
           };
         }
         return { ...ch, [field]: value } as Chapter;
@@ -1322,17 +1382,40 @@ export default function CourseUpload() {
 
   const saveChapterLecture = async (id: string) => {
     const ch = chapters.find((c) => c.id === id);
-    if (!ch?.video) return;
-    const nameOk = ch.name.trim().length > 0;
-    const videoOk = Boolean(ch.videoPreview && ch.video);
-    if (!nameOk || !videoOk) {
+    if (!ch) return;
+
+    const title = ch.name.trim();
+    if (!title) {
       toast({
         title: "Cannot save yet",
-        description: "Add a chapter title and choose a lesson video first.",
+        description: "Add a chapter title first.",
         variant: "destructive",
       });
       return;
     }
+
+    const existingLectureId = ch.lectureRemoteId?.trim();
+    const isUpdate = Boolean(existingLectureId);
+    const hasNewVideo = Boolean(ch.video);
+
+    if (!isUpdate && !hasNewVideo) {
+      toast({
+        title: "Cannot save yet",
+        description: "Choose a lesson video first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isUpdate && !hasNewVideo && !ch.videoPreview) {
+      toast({
+        title: "Cannot save yet",
+        description: "This lesson has no video on file. Choose a video or remove and re-add the chapter.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     let draftId = courseDraftId?.trim();
     if (!draftId) {
       const stored = readStoredCourseDraftId();
@@ -1350,52 +1433,73 @@ export default function CourseUpload() {
       });
       return;
     }
-    const videoOversized = getCourseMediaFileOversizedMessage(ch.video, "lecture");
-    if (videoOversized) {
-      toast({
-        title: "Video too large",
-        description: videoOversized,
-        variant: "destructive",
-      });
-      return;
+
+    if (hasNewVideo) {
+      const videoOversized = getCourseMediaFileOversizedMessage(ch.video!, "lecture");
+      if (videoOversized) {
+        toast({
+          title: "Video too large",
+          description: videoOversized,
+          variant: "destructive",
+        });
+        return;
+      }
     }
+
     setSavingLectureChapterId(id);
     try {
-      const res = await createCourseLectureWithVideo({
-        courseId: draftId,
-        chapterTitle: ch.name.trim(),
-        video: ch.video,
-      });
-      const remoteId = extractLectureIdFromCreateResponse(res);
+      const res = isUpdate
+        ? await updateCourseLecture({
+            lectureId: existingLectureId!,
+            courseId: draftId,
+            chapterTitle: title,
+            ...(hasNewVideo ? { video: ch.video! } : { videoFileId: ch.videoFileId }),
+          })
+        : await createCourseLectureWithVideo({
+            courseId: draftId,
+            chapterTitle: title,
+            video: ch.video!,
+          });
+
+      const remoteId = extractLectureIdFromCreateResponse(res) ?? existingLectureId;
+      const videoFileId =
+        extractVideoFileIdFromLectureResponse(res) ?? ch.videoFileId;
+
       if (!remoteId) {
         toast({
-            title: "Lesson may not be linked",
-            description:
-              "We couldn’t confirm the lesson id from the server. Try saving again before adding a quiz.",
+          title: "Lesson may not be linked",
+          description:
+            "We couldn’t confirm the lesson id from the server. Try saving again before adding a quiz.",
           variant: "destructive",
         });
       }
+
       setChapters((prev) =>
         prev.map((c) =>
           c.id === id
             ? {
                 ...c,
                 lectureSaved: true,
+                video: hasNewVideo ? null : c.video,
                 ...(remoteId ? { lectureRemoteId: remoteId } : {}),
+                ...(videoFileId != null ? { videoFileId } : {}),
               }
             : c
         )
       );
+
       const serverMessage = extractCreateLectureMessage(res);
       toast({
-        title: serverMessage ?? "Lesson saved",
-        description: remoteId
-          ? "Your video is uploaded. You can add an optional quiz below or continue."
-          : "Video sent — if anything looks wrong, check your connection and try Save again.",
+        title: serverMessage ?? (isUpdate ? "Lesson updated" : "Lesson saved"),
+        description: isUpdate
+          ? "Chapter name and video changes are saved on the server."
+          : remoteId
+            ? "Your video is uploaded. You can add an optional quiz below or continue."
+            : "Video sent — if anything looks wrong, check your connection and try Save again.",
       });
     } catch (e) {
       toast({
-          title: "Could not save lesson",
+        title: "Could not save lesson",
         description: getCourseCreateErrorMessage(e),
         variant: "destructive",
       });
@@ -1422,6 +1526,7 @@ export default function CourseUpload() {
               videoPreview: null,
               lectureSaved: false,
               lectureRemoteId: undefined,
+              videoFileId: undefined,
               assessmentSaved: false,
               assessmentRemoteId: undefined,
               assessmentDurationMinutes: undefined,
@@ -1737,6 +1842,30 @@ export default function CourseUpload() {
     else setBackConfirmOpen(true);
   };
 
+  const handleBackConfirmOpenChange = (open: boolean) => {
+    setBackConfirmOpen(open);
+    if (!open && navigationBlocker.state === "blocked") {
+      navigationBlocker.reset();
+    }
+  };
+
+  const confirmDiscardCourse = () => {
+    allowLeaveRef.current = true;
+    setBackConfirmOpen(false);
+    clearAllCourseBuilderPersistence();
+    if (navigationBlocker.state === "blocked") {
+      navigationBlocker.proceed();
+      return;
+    }
+    navigate("/my-courses");
+  };
+
+  const confirmEditDone = () => {
+    allowLeaveRef.current = true;
+    setEditDoneConfirmOpen(false);
+    navigate("/my-courses");
+  };
+
   const handleNext = useCallback(async () => {
     if (currentStep === 1) {
       const nextErrors = validateBasicInfoFields({
@@ -1919,23 +2048,29 @@ export default function CourseUpload() {
           /title is required|description is required|language is required|title must be|description must be/i.test(
             raw
           );
-        if (looksLikeMissingBasicFields) {
-          setBasicInfoFieldErrors(
-            validateBasicInfoFields({
-              title,
-              language,
-              price,
-              about,
-              coreDepartment,
-              coreBranch,
-              coreClass,
-            })
-          );
+        const looksLikeLanguageRejected = isCourseLanguageApiValidationError(raw);
+        if (looksLikeMissingBasicFields || looksLikeLanguageRejected) {
+          const fieldErrors = validateBasicInfoFields({
+            title,
+            language,
+            price,
+            about,
+            coreDepartment,
+            coreBranch,
+            coreClass,
+          });
+          if (looksLikeLanguageRejected) {
+            fieldErrors.language = getCourseLanguageApiFieldError(raw);
+          }
+          setBasicInfoFieldErrors(fieldErrors);
           setCurrentStep(1);
           toast({
-            title: "Server rejected the course details",
-            description:
-              "Save & Next talks to the server from this page, so errors can show here even though the problem is your course title, description, or language. We sent you back to Basic Information — fix any highlighted fields, then return to Media and save again.",
+            title: looksLikeLanguageRejected
+              ? "Instruction language not accepted"
+              : "Server rejected the course details",
+            description: looksLikeLanguageRejected
+              ? "The API only allows certain languages today. We sent you back to Basic Information — change Instruction Language, then return to Media and save again."
+              : "Save & Next talks to the server from this page, so errors can show here even though the problem is your course title, description, or language. We sent you back to Basic Information — fix any highlighted fields, then return to Media and save again.",
             variant: "destructive",
           });
         } else {
@@ -1976,17 +2111,8 @@ export default function CourseUpload() {
 
     if (currentStep < 6) setCurrentStep(currentStep + 1);
     else if (!canRequestCourseReview(courseServerStatus ?? undefined)) {
-      const blockMsg = getCourseReviewBlockMessage(courseServerStatus ?? undefined);
-      toast({
-        title:
-          courseServerStatus === COURSE_STATUS.REVIEW
-            ? "Already in review"
-            : "Cannot submit course",
-        description:
-          blockMsg ??
-          "This course cannot be submitted for review in its current state.",
-        variant: "destructive",
-      });
+      allowLeaveRef.current = true;
+      navigate("/my-courses");
     } else setUploadConfirmOpen(true);
   }, [
     currentStep,
@@ -2013,7 +2139,21 @@ export default function CourseUpload() {
     facultiesData,
     streamsData,
     classesData,
+    navigate,
   ]);
+
+  const handleFooterPrimaryAction = () => {
+    if (
+      isEditingCourse &&
+      currentStep === 6 &&
+      courseServerStatus != null &&
+      !canRequestCourseReview(courseServerStatus)
+    ) {
+      setEditDoneConfirmOpen(true);
+      return;
+    }
+    void handleNext();
+  };
 
   const handleUploadCourse = async () => {
     const draftId = resolveCourseDraftId();
@@ -2089,6 +2229,7 @@ export default function CourseUpload() {
           extractRequestCourseReviewMessage(res) ??
           "Your course has been submitted and will appear as In Review.",
       });
+      allowLeaveRef.current = true;
       navigate("/my-courses");
     } catch (e) {
       toast({
@@ -2100,6 +2241,154 @@ export default function CourseUpload() {
       setSubmittingForReview(false);
     }
   };
+
+  const validateCurrentStepForSidebarLeave = useCallback((): {
+    ok: boolean;
+    title: string;
+    messages: string[];
+    fieldErrors?: BasicInfoFieldErrors;
+  } => {
+    switch (currentStep) {
+      case 1: {
+        const fieldErrors = validateBasicInfoFields({
+          title,
+          language,
+          price,
+          about,
+          coreDepartment,
+          coreBranch,
+          coreClass,
+        });
+        const messages = Object.values(fieldErrors).filter(
+          (m): m is string => Boolean(m)
+        );
+        return {
+          ok: messages.length === 0,
+          title: "Complete required fields",
+          messages,
+          fieldErrors,
+        };
+      }
+      case 2: {
+        const messages: string[] = [];
+        const hasIntroMedia =
+          Boolean(introVideo) || existingPromotionVideoFileId != null;
+        const hasThumbnailMedia =
+          Boolean(thumbnail) || existingCoverThumbnailFileId != null;
+        if (!hasIntroMedia) {
+          messages.push("Introduction video is required.");
+        }
+        if (!hasThumbnailMedia) {
+          messages.push("Cover thumbnail is required.");
+        }
+        if (coreSubjectAnySelected && !coreSubjectAllSelected) {
+          messages.push(
+            "If you select department, branch, or class, you must select all three."
+          );
+        }
+        if (introVideo) {
+          const promoOver = getCourseMediaFileOversizedMessage(introVideo, "promo");
+          if (promoOver) messages.push(promoOver);
+        }
+        if (thumbnail) {
+          const thumbOver = getCourseMediaFileOversizedMessage(
+            thumbnail,
+            "thumbnail"
+          );
+          if (thumbOver) messages.push(thumbOver);
+        }
+        if (introVideo && thumbnail) {
+          const combinedOver = getCourseCreateOversizedMessage(introVideo, thumbnail);
+          if (combinedOver) messages.push(combinedOver);
+        }
+        return {
+          ok: messages.length === 0,
+          title: "Media required",
+          messages,
+        };
+      }
+      case 3: {
+        const notAllLecturesSaved = chapters.some((ch) => !ch.lectureSaved);
+        if (!notAllLecturesSaved) {
+          return { ok: true, title: "", messages: [] };
+        }
+        return {
+          ok: false,
+          title: "Save every lesson first",
+          messages: [
+            "Tap Save lesson on each chapter after you've added the title and video.",
+          ],
+        };
+      }
+      case 4: {
+        if (graduationExam.saved) {
+          return { ok: true, title: "", messages: [] };
+        }
+        return {
+          ok: false,
+          title: "Graduation exam required",
+          messages: [
+            "Add the graduation exam, save it to the server, then continue.",
+          ],
+        };
+      }
+      default:
+        return { ok: true, title: "", messages: [] };
+    }
+  }, [
+    currentStep,
+    title,
+    language,
+    price,
+    about,
+    coreDepartment,
+    coreBranch,
+    coreClass,
+    introVideo,
+    thumbnail,
+    existingPromotionVideoFileId,
+    existingCoverThumbnailFileId,
+    coreSubjectAnySelected,
+    coreSubjectAllSelected,
+    chapters,
+    graduationExam.saved,
+  ]);
+
+  const attemptSidebarStepChange = useCallback(
+    (targetStepId: number) => {
+      if (targetStepId === currentStep) return;
+
+      if (isEditingCourse) {
+        const result = validateCurrentStepForSidebarLeave();
+        if (!result.ok) {
+          if (result.fieldErrors) {
+            setBasicInfoFieldErrors(result.fieldErrors);
+          }
+          setMandatoryStepDialog({
+            title: result.title,
+            messages: result.messages,
+          });
+          return;
+        }
+        setCurrentStep(targetStepId);
+        return;
+      }
+
+      if (targetStepId < currentStep) {
+        setCurrentStep(targetStepId);
+        return;
+      }
+      if (targetStepId === currentStep + 1) {
+        void handleNext();
+      }
+    },
+    [
+      currentStep,
+      isEditingCourse,
+      validateCurrentStepForSidebarLeave,
+      handleNext,
+    ]
+  );
 
   const renderSidebar = () => (
     <aside className="hidden lg:flex lg:flex-col w-80 shrink-0 sticky top-6 min-h-[calc(100vh-5rem)] border-r border-border pl-4 pr-6 animate-in slide-in-from-left-4 duration-500">
@@ -2117,22 +2406,24 @@ export default function CourseUpload() {
           const Icon = s.icon;
           const isActive = currentStep === s.id;
           const isCompleted = currentStep > s.id;
+          const canJumpToStep =
+            isEditingCourse || s.id <= currentStep || s.id === currentStep + 1;
           return (
             <button
               key={s.id}
-              onClick={() => {
-                // Basic sequential access enforcement
-                if (s.id < currentStep || (s.id === currentStep + 1)) {
-                  // If attempting to jump forward, simulate Next check
-                  if (s.id > currentStep) void handleNext();
-                  else setCurrentStep(s.id);
-                }
-              }}
+              type="button"
+              onClick={() => attemptSidebarStepChange(s.id)}
               className={cn(
                 "w-full flex items-center gap-2 pl-3 pr-2 py-3 rounded-lg transition-all duration-200 group relative",
-                isActive ? "bg-primary text-primary-foreground shadow-md" : (isCompleted ? "text-primary hover:bg-primary/5" : "text-muted-foreground hover:bg-muted/50 cursor-not-allowed")
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : isCompleted
+                    ? "text-primary hover:bg-primary/5"
+                    : isEditingCourse
+                      ? "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted/50 cursor-not-allowed"
               )}
-              disabled={s.id > currentStep + 1}
+              disabled={!canJumpToStep}
             >
               <div className={cn(
                 "w-8 h-8 shrink-0 rounded-full flex items-center justify-center border-2 transition-colors",
@@ -2423,6 +2714,21 @@ export default function CourseUpload() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex flex-col items-center px-5 py-8 sm:px-6 sm:py-10">
+                      <input
+                        type="file"
+                        hidden
+                        ref={thumbnailRef}
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (thumbnailPreview?.startsWith("blob:")) {
+                            URL.revokeObjectURL(thumbnailPreview);
+                          }
+                          handleMediaUpload(file, "image", setThumbnail, setThumbnailPreview);
+                          e.target.value = "";
+                        }}
+                      />
                       {thumbnailPreview ? (
                         <div className="w-full max-w-xl space-y-3">
                           <div className="group relative aspect-video w-full overflow-hidden rounded-xl shadow-xl">
@@ -2431,8 +2737,8 @@ export default function CourseUpload() {
                               <Button variant="secondary" size="sm" type="button" onClick={() => setViewingMedia({ type: 'image', url: thumbnailPreview })}>
                                 View Full
                               </Button>
-                              <Button variant="destructive" size="sm" type="button" onClick={() => removeMedia(setThumbnail, setThumbnailPreview, thumbnailPreview)}>
-                                Remove
+                              <Button variant="secondary" size="sm" type="button" onClick={() => thumbnailRef.current?.click()}>
+                                Replace
                               </Button>
                             </div>
                           </div>
@@ -2459,7 +2765,6 @@ export default function CourseUpload() {
                               PNG, JPG or WebP — <span className="whitespace-nowrap">1280×720</span> recommended
                             </span>
                           </div>
-                          <input type="file" hidden ref={thumbnailRef} accept="image/*" onChange={(e) => e.target.files?.[0] && handleMediaUpload(e.target.files[0], 'image', setThumbnail, setThumbnailPreview)} />
                         </button>
                       )}
                     </CardContent>
@@ -3081,7 +3386,7 @@ export default function CourseUpload() {
               </Button>
               <Button
                 className="gradient-gold order-1 h-10 w-full text-sm font-bold shadow-lg sm:order-2 sm:h-11 sm:w-[250px] sm:text-base"
-                onClick={() => void handleNext()}
+                onClick={handleFooterPrimaryAction}
                 disabled={
                   courseDraftSaving ||
                   submittingForReview ||
@@ -3100,7 +3405,7 @@ export default function CourseUpload() {
                     ? "Loading…"
                     : courseServerStatus != null &&
                         !canRequestCourseReview(courseServerStatus)
-                      ? "Already submitted"
+                      ? "Done"
                       : "Submit & Publish"
                 ) : currentStep === 2 ? (
                   "Save & Next"
@@ -3388,17 +3693,79 @@ export default function CourseUpload() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={backConfirmOpen} onOpenChange={setBackConfirmOpen}>
+      <AlertDialog
+        open={mandatoryStepDialog != null}
+        onOpenChange={(open) => {
+          if (!open) setMandatoryStepDialog(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold">
+              {mandatoryStepDialog?.title ?? "Required details missing"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>Complete the following on this step before switching sections:</p>
+                <ul className="list-disc space-y-1.5 pl-5">
+                  {mandatoryStepDialog?.messages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-2">
+            <AlertDialogAction
+              className="h-12 min-w-[8rem] font-semibold"
+              onClick={() => setMandatoryStepDialog(null)}
+            >
+              Got it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={editDoneConfirmOpen}
+        onOpenChange={setEditDoneConfirmOpen}
+      >
+        <AlertDialogContent className="rounded-2xl sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-2xl font-bold">Done editing?</AlertDialogTitle>
+            <AlertDialogDescription className="text-md">
+              You&apos;ll return to My Courses. Make sure you&apos;ve saved changes in each
+              section before leaving — unsaved work in this session may be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogCancel className="h-12 border-2">Keep editing</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-12 min-w-[10rem] gradient-gold font-bold text-primary-foreground"
+              onClick={confirmEditDone}
+            >
+              Go to My Courses
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={backConfirmOpen} onOpenChange={handleBackConfirmOpenChange}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-2xl font-bold">Discard draft?</AlertDialogTitle>
+            <AlertDialogTitle className="text-2xl font-bold">{exitConfirmCopy.title}</AlertDialogTitle>
             <AlertDialogDescription className="text-md">
-              You are about to exit the course builder. Any current progress will be lost.
+              {exitConfirmCopy.description}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4">
             <AlertDialogCancel className="h-12 border-2">Keep Editing</AlertDialogCancel>
-            <AlertDialogAction className="h-12 bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { clearAllCourseBuilderPersistence(); navigate("/my-courses"); }}>Discard Changes</AlertDialogAction>
+            <AlertDialogAction
+              className="h-12 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDiscardCourse}
+            >
+              {exitConfirmCopy.confirmLabel}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

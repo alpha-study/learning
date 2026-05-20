@@ -153,9 +153,13 @@ export function isGenericChapterLabel(title: string | undefined): boolean {
 
 /**
  * Chapter name from a lecture row.
- * GET /api/course/{id}/lectures uses `title` (Postman). POST lecture/create sends `chapterTitle`.
+ * GET /api/course/{id}/lectures and POST lecture/create both use `title`.
  */
 function pickChapterTitleFromLectureRow(row: Record<string, unknown>): string | undefined {
+  if (typeof row.chapter === "string" && row.chapter.trim()) {
+    return row.chapter.trim();
+  }
+
   const direct = pickString(
     row.title,
     row.chapterTitle,
@@ -164,6 +168,8 @@ function pickChapterTitleFromLectureRow(row: Record<string, unknown>): string | 
     row.chapter_name,
     row.lectureTitle,
     row.lecture_title,
+    row.lectureName,
+    row.lecture_name,
     row.name,
     row.label,
     row.displayName,
@@ -171,7 +177,16 @@ function pickChapterTitleFromLectureRow(row: Record<string, unknown>): string | 
   );
   if (direct) return direct;
 
-  for (const key of ["lecture", "courseLecture", "course_lecture", "lesson", "chapter"] as const) {
+  for (const key of [
+    "lecture",
+    "courseLecture",
+    "course_lecture",
+    "lesson",
+    "chapter",
+    "attributes",
+    "meta",
+    "metadata",
+  ] as const) {
     const inner = row[key];
     if (inner && typeof inner === "object" && !Array.isArray(inner)) {
       const nested = pickChapterTitleFromLectureRow(inner as Record<string, unknown>);
@@ -206,7 +221,14 @@ export function mapLectureApiRowToListItem(
     id,
     chapterTitle,
     videoPreviewUrl: videoPath ? resolveCourseMediaSrc(videoPath) : undefined,
-    videoFileId: pickNumber(row.videoFileId, row.video_file_id, row.fileId, row.file_id),
+    videoFileId: pickNumber(
+      row.videoFileId,
+      row.video_file_id,
+      row.assetFileId,
+      row.asset_file_id,
+      row.fileId,
+      row.file_id
+    ),
   };
 }
 
@@ -322,33 +344,50 @@ function mediaPathFromRow(row: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+const API_COLLECTION_KEYS = [
+  "lectures",
+  "courseLectures",
+  "course_lectures",
+  "lessons",
+  "chapters",
+  "items",
+  "list",
+  "records",
+  "content",
+  "values",
+  "rows",
+  "data",
+  "result",
+  "payload",
+  "body",
+  "studyMaterials",
+  "study_materials",
+  "materials",
+  "assessments",
+] as const;
+
+/** Unwrap list payloads; prefer the largest non-empty array (avoids `{ rows: [], data: [...] }`). */
 function extractCollection(data: unknown): unknown[] {
   if (!data) return [];
   if (Array.isArray(data)) return data;
   if (typeof data !== "object") return [];
+
   const r = data as Record<string, unknown>;
-  for (const key of [
-    "rows",
-    "data",
-    "lectures",
-    "courseLectures",
-    "course_lectures",
-    "lessons",
-    "studyMaterials",
-    "study_materials",
-    "materials",
-    "assessments",
-    "items",
-    "list",
-  ]) {
+  let best: unknown[] = [];
+
+  for (const key of API_COLLECTION_KEYS) {
     const v = r[key];
-    if (Array.isArray(v)) return v;
+    if (Array.isArray(v)) {
+      if (v.length > best.length) best = v;
+      continue;
+    }
     if (v && typeof v === "object" && !Array.isArray(v)) {
       const inner = extractCollection(v);
-      if (inner.length > 0) return inner;
+      if (inner.length > best.length) best = inner;
     }
   }
-  return [];
+
+  return best;
 }
 
 export function parseLectureListResponse(data: unknown): CourseLectureListItem[] {
@@ -488,6 +527,46 @@ export function lectureTitleForAssessment(
   return `Lecture ${lectureId}`;
 }
 
+function pickLectureChapterTitle(...titles: (string | undefined)[]): string {
+  for (const t of titles) {
+    const trimmed = t?.trim() ?? "";
+    if (trimmed && !isGenericChapterLabel(trimmed)) return trimmed;
+  }
+  for (const t of titles) {
+    const trimmed = t?.trim() ?? "";
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+/** Prefer the first non-empty chapter title between two parsed lecture lists (by id, then index). */
+export function mergeLectureListItems(
+  primary: CourseLectureListItem[],
+  secondary: CourseLectureListItem[]
+): CourseLectureListItem[] {
+  if (primary.length === 0) return secondary;
+  if (secondary.length === 0) return primary;
+
+  const secondaryById = new Map(secondary.map((l) => [String(l.id), l]));
+
+  const merged = primary.map((lec, index) => {
+    const other = secondaryById.get(String(lec.id)) ?? secondary[index];
+    if (!other) return lec;
+    return {
+      ...lec,
+      chapterTitle: pickLectureChapterTitle(lec.chapterTitle, other.chapterTitle),
+      videoPreviewUrl: lec.videoPreviewUrl ?? other.videoPreviewUrl,
+      videoFileId: lec.videoFileId ?? other.videoFileId,
+    };
+  });
+
+  const primaryIds = new Set(primary.map((l) => String(l.id)));
+  for (const lec of secondary) {
+    if (!primaryIds.has(String(lec.id))) merged.push(lec);
+  }
+  return merged;
+}
+
 /** Prefer persisted builder names when the API returns a generic or empty chapter title. */
 export function enrichLecturesWithPersistedChapterNames(
   lectures: CourseLectureListItem[],
@@ -504,6 +583,10 @@ export function enrichLecturesWithPersistedChapterNames(
     );
     const persistedName = match?.name?.trim();
     const apiTitle = lec.chapterTitle?.trim();
+
+    if (apiTitle && !isGenericChapterLabel(apiTitle)) {
+      return lec;
+    }
 
     if (persistedName && isGenericChapterLabel(apiTitle)) {
       return { ...lec, chapterTitle: persistedName };
@@ -523,11 +606,11 @@ export function enrichLecturesWithPersistedChapterNames(
 
 /** Display title for curriculum rows (never the bare word "Chapter"). */
 export function displayChapterTitle(
-  lecture: Pick<CourseLectureListItem, "chapterTitle">,
+  lecture: Pick<CourseLectureListItem, "chapterTitle"> & { title?: string },
   chapterIndex: number
 ): string {
-  const title = lecture.chapterTitle?.trim();
-  if (title && !isGenericChapterLabel(title)) return title;
+  const title = pickLectureChapterTitle(lecture.title, lecture.chapterTitle);
+  if (title) return title;
   return `Chapter ${chapterIndex + 1}`;
 }
 
@@ -748,8 +831,10 @@ export async function fetchCourseCurriculum(
   const assessments =
     listAssessments.length > 0 ? listAssessments : nestedAssessments;
 
+  const lectures = mergeLectureListItems(listLectures, nestedLectures);
+
   return {
-    lectures: listLectures.length > 0 ? listLectures : nestedLectures,
+    lectures,
     studyMaterials: listMaterials.length > 0 ? listMaterials : nestedMaterials,
     assessments: applyAssessmentSnapshots(assessments),
   };
