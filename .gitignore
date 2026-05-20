@@ -12,10 +12,7 @@ dist
 dist-ssr
 *.local
 
-# Local secrets and overrides (set on Vercel / your machine)
-.env
-.env.*
-!.env.example
+# Local-only overrides (never commit)
 .env.local
 .env.*.local
 
